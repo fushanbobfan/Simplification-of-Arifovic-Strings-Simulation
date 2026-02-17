@@ -12,205 +12,126 @@ class LCG {
   randInt(max) {
     return Math.floor(this.random() * max);
   }
-  pick(arr) {
-    return arr[this.randInt(arr.length)];
-  }
 }
 
-const ACTIONS = ["L", "M", "H"];
-const COST = { L: 0, M: 5, H: 10 };
-const BENEFIT = { L: 0, M: 10, H: 100 };
-const CLASS_NAME = { L: "low", M: "medium", H: "high" };
-
-let state = null;
-
-function minAction(actions) {
-  if (actions.includes("L")) return "L";
-  if (actions.includes("M")) return "M";
-  return "H";
+function randomStrategy(length, rng) {
+  let out = "";
+  for (let i = 0; i < length; i++) out += rng.random() < 0.5 ? "0" : "1";
+  return out;
 }
 
-function payoff(myAction, groupActions) {
-  const minEffort = minAction(groupActions);
-  return BENEFIT[minEffort] - COST[myAction];
+function fitness(strategy, target) {
+  let score = 0;
+  for (let i = 0; i < strategy.length; i++) if (strategy[i] === target[i]) score++;
+  return score;
 }
 
-function shuffledIndices(n, rng) {
-  const arr = Array.from({ length: n }, (_, i) => i);
-  for (let i = n - 1; i > 0; i--) {
-    const j = rng.randInt(i + 1);
-    [arr[i], arr[j]] = [arr[j], arr[i]];
+function tournamentSelect(pop, scores, k, rng) {
+  let bestIdx = rng.randInt(pop.length);
+  for (let i = 1; i < k; i++) {
+    const idx = rng.randInt(pop.length);
+    if (scores[idx] > scores[bestIdx]) bestIdx = idx;
   }
-  return arr;
+  return pop[bestIdx];
 }
 
-function makeGroups(populationSize, groupSize, rng) {
-  if (groupSize === "all") {
-    return [Array.from({ length: populationSize }, (_, i) => i)];
+function crossover(a, b, rng) {
+  if (a.length <= 1) return a;
+  const cut = 1 + rng.randInt(a.length - 1);
+  return a.slice(0, cut) + b.slice(cut);
+}
+
+function mutate(strategy, mutationRate, rng) {
+  let out = "";
+  for (const bit of strategy) {
+    if (rng.random() < mutationRate) out += bit === "0" ? "1" : "0";
+    else out += bit;
   }
-  const n = Number(groupSize);
-  const order = shuffledIndices(populationSize, rng);
-  const groups = [];
-  for (let i = 0; i < order.length; i += n) {
-    groups.push(order.slice(i, i + n));
+  return out;
+}
+
+function runSimulation(params) {
+  const rng = new LCG(params.seed);
+  const target = randomStrategy(params.strategyLength, rng);
+  let population = Array.from({ length: params.populationSize }, () => randomStrategy(params.strategyLength, rng));
+  const history = [];
+
+  for (let g = 0; g <= params.generations; g++) {
+    const scores = population.map((s) => fitness(s, target));
+    let bestIdx = 0;
+    for (let i = 1; i < scores.length; i++) if (scores[i] > scores[bestIdx]) bestIdx = i;
+
+    const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
+    history.push({
+      generation: g,
+      bestFitness: scores[bestIdx],
+      averageFitness: avg,
+      uniqueStrategies: new Set(population).size,
+      bestStrategy: population[bestIdx],
+    });
+
+    if (g === params.generations) break;
+
+    const next = [];
+    while (next.length < params.populationSize) {
+      const a = tournamentSelect(population, scores, params.tournamentSize, rng);
+      const b = tournamentSelect(population, scores, params.tournamentSize, rng);
+      const mixed = rng.random() < params.crossoverRate ? crossover(a, b, rng) : a;
+      next.push(mutate(mixed, params.mutationRate, rng));
+    }
+    population = next;
   }
-  return groups;
+
+  return { target, history };
 }
 
 function readParams() {
-  const populationSize = Number(document.getElementById("populationSize").value);
-  const rounds = Number(document.getElementById("rounds").value);
-  const seed = Number(document.getElementById("seed").value);
-  const learningRate = Number(document.getElementById("learningRate").value);
-  const active = document.querySelector(".scenario button.active");
-  const groupSize = active.dataset.groupSize;
-
-  if (populationSize < 4) throw new Error("Class size must be at least 4.");
-  if (rounds < 1) throw new Error("Rounds must be at least 1.");
-  if (learningRate < 0 || learningRate > 1) throw new Error("Learning rate must be between 0 and 1.");
-  if (groupSize !== "all" && Number(groupSize) > populationSize) {
-    throw new Error("Group size cannot exceed class size.");
-  }
-
-  return { populationSize, rounds, seed, learningRate, groupSize };
-}
-
-function initializeState(params) {
-  const rng = new LCG(params.seed);
-  const actions = Array.from({ length: params.populationSize }, () => rng.pick(ACTIONS));
-  return { params, rng, actions, history: [], round: 0 };
-}
-
-function computeRound(actions, params, rng) {
-  const groups = makeGroups(actions.length, params.groupSize, rng);
-  const payoffs = Array.from({ length: actions.length }, () => 0);
-
-  for (const group of groups) {
-    const groupActions = group.map((idx) => actions[idx]);
-    for (const idx of group) {
-      payoffs[idx] = payoff(actions[idx], groupActions);
-    }
-  }
-
-  const avgByAction = { L: -Infinity, M: -Infinity, H: -Infinity };
-  const countByAction = { L: 0, M: 0, H: 0 };
-  const sumByAction = { L: 0, M: 0, H: 0 };
-
-  for (let i = 0; i < actions.length; i++) {
-    const a = actions[i];
-    countByAction[a] += 1;
-    sumByAction[a] += payoffs[i];
-  }
-  for (const a of ACTIONS) {
-    if (countByAction[a] > 0) avgByAction[a] = sumByAction[a] / countByAction[a];
-  }
-
-  const bestAction = ACTIONS.reduce((best, a) => (avgByAction[a] > avgByAction[best] ? a : best), "L");
-
-  const nextActions = actions.slice();
-  for (let i = 0; i < actions.length; i++) {
-    if (rng.random() < params.learningRate) nextActions[i] = bestAction;
-  }
-
-  const share = {
-    L: nextActions.filter((a) => a === "L").length / nextActions.length,
-    M: nextActions.filter((a) => a === "M").length / nextActions.length,
-    H: nextActions.filter((a) => a === "H").length / nextActions.length,
+  const getNum = (id) => Number(document.getElementById(id).value);
+  const params = {
+    populationSize: getNum("populationSize"),
+    strategyLength: getNum("strategyLength"),
+    generations: getNum("generations"),
+    mutationRate: getNum("mutationRate"),
+    tournamentSize: getNum("tournamentSize"),
+    crossoverRate: getNum("crossoverRate"),
+    seed: getNum("seed"),
   };
-  const avgPayoff = payoffs.reduce((x, y) => x + y, 0) / payoffs.length;
 
-  return {
-    nextActions,
-    avgPayoff,
-    share,
-    classMin: minAction(nextActions),
-  };
-}
-
-function appendHistoryRow(round, share, avgPayoff) {
-  const body = document.getElementById("historyBody");
-  const tr = document.createElement("tr");
-  tr.innerHTML = `<td>${round}</td><td>${(share.L * 100).toFixed(1)}%</td><td>${(share.M * 100).toFixed(1)}%</td><td>${(share.H * 100).toFixed(1)}%</td><td>${avgPayoff.toFixed(2)}</td>`;
-  body.prepend(tr);
-}
-
-function renderStrings(actions) {
-  const viz = document.getElementById("viz");
-  viz.innerHTML = "";
-  actions.forEach((a) => {
-    const el = document.createElement("div");
-    el.className = `agent ${CLASS_NAME[a]}`;
-    el.textContent = a;
-    viz.appendChild(el);
-  });
-}
-
-function scenarioText(groupSize, populationSize) {
-  return groupSize === "all" ? `whole class (n=${populationSize})` : `n=${groupSize}`;
-}
-
-function renderState() {
-  document.getElementById("scenarioLabel").textContent = scenarioText(state.params.groupSize, state.params.populationSize);
-  document.getElementById("roundLabel").textContent = String(state.round);
-
-  const latest = state.history[state.history.length - 1];
-  const avgPayoff = latest ? latest.avgPayoff : 0;
-  const classMin = latest ? latest.classMin : minAction(state.actions);
-
-  document.getElementById("avgPayoffLabel").textContent = avgPayoff.toFixed(2);
-  document.getElementById("classMinLabel").textContent = classMin;
-  renderStrings(state.actions);
-}
-
-function runOneRound() {
-  const result = computeRound(state.actions, state.params, state.rng);
-  state.actions = result.nextActions;
-  state.round += 1;
-  state.history.push({ round: state.round, ...result });
-  appendHistoryRow(state.round, result.share, result.avgPayoff);
-  renderState();
-}
-
-function runSimulation() {
-  const params = readParams();
-  state = initializeState(params);
-  document.getElementById("historyBody").innerHTML = "";
-  renderState();
-
-  for (let r = 0; r < params.rounds; r++) {
-    runOneRound();
+  if (params.populationSize < 2) throw new Error("Population size must be at least 2.");
+  if (params.strategyLength < 2) throw new Error("Strategy length must be at least 2.");
+  if (params.generations < 1) throw new Error("Generations must be at least 1.");
+  if (params.mutationRate < 0 || params.mutationRate > 1) throw new Error("Mutation rate must be between 0 and 1.");
+  if (params.crossoverRate < 0 || params.crossoverRate > 1) throw new Error("Crossover rate must be between 0 and 1.");
+  if (params.tournamentSize < 2 || params.tournamentSize > params.populationSize) {
+    throw new Error("Tournament size must be between 2 and population size.");
   }
+
+  return params;
 }
 
-function setupScenarioButtons() {
-  document.querySelectorAll(".scenario button").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      document.querySelectorAll(".scenario button").forEach((b) => b.classList.remove("active"));
-      btn.classList.add("active");
-    });
-  });
+function renderResults(result) {
+  const body = document.getElementById("resultsBody");
+  body.innerHTML = "";
+  for (const row of result.history) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${row.generation}</td><td>${row.bestFitness}</td><td>${row.averageFitness.toFixed(2)}</td><td>${row.uniqueStrategies}</td><td>${row.bestStrategy}</td>`;
+    body.appendChild(tr);
+  }
+
+  const finalRow = result.history[result.history.length - 1];
+  document.getElementById("targetString").textContent = result.target;
+  document.getElementById("finalBest").textContent = `${finalRow.bestFitness}/${result.target.length}`;
+  document.getElementById("finalAvg").textContent = finalRow.averageFitness.toFixed(2);
 }
 
 document.getElementById("runButton").addEventListener("click", () => {
   try {
-    runSimulation();
+    const params = readParams();
+    const result = runSimulation(params);
+    renderResults(result);
   } catch (err) {
     alert(err.message);
   }
 });
 
-document.getElementById("nextRoundButton").addEventListener("click", () => {
-  try {
-    if (!state) {
-      state = initializeState(readParams());
-      document.getElementById("historyBody").innerHTML = "";
-      renderState();
-    }
-    runOneRound();
-  } catch (err) {
-    alert(err.message);
-  }
-});
-
-setupScenarioButtons();
-runSimulation();
+document.getElementById("runButton").click();
