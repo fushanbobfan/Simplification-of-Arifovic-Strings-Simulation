@@ -7,6 +7,7 @@ This repo now includes a browser-based simulation in `web/` and a GitHub Actions
 
 After you push to your default branch and enable Pages in repo settings, the public site URL will be:
 
+
 - `https://<your-github-username>.github.io/Simplification-of-Arifovic-Strings-Simulation/`
 
 ## How to start it locally
