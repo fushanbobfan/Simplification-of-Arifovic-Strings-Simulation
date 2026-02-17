@@ -42,19 +42,18 @@ Compared with richer versions in the original literature, this classroom model k
 
 ## Deploy to a public website (one-time setup)
 1. Push this repository to GitHub.
-2. In **Settings → Actions → General**, set workflow permissions to **Read and write permissions**.
-3. Run the workflow **Deploy web simulation to GitHub Pages** (or push to your default branch).
-4. In **Settings → Pages**, set:
-   - **Source**: *Deploy from a branch*
-   - **Branch**: `gh-pages`
-   - **Folder**: `/ (root)`
-5. Wait 1-3 minutes, then open the public URL.
+2. In GitHub: **Settings → Pages**.
+3. Under **Build and deployment**, set **Source** to **GitHub Actions**.
+   - (The workflow also includes `enablement: true` to auto-enable Pages if it is currently disabled.)
+4. Push to your default branch (or run the workflow manually in **Actions**).
+5. GitHub will publish the site for anyone on the public internet.
+
 
 ## If you see a 404 on GitHub Pages
 Use this checklist:
 
 1. Confirm the repository is **public**.
-2. Go to **Settings → Pages** and set **Source** to **Deploy from a branch** (`gh-pages`, `/root`).
+2. Go to **Settings → Pages** and set **Source** to **GitHub Actions**.
 3. Open **Actions** and confirm the workflow **"Deploy web simulation to GitHub Pages"** succeeded on your default branch.
 4. If your default branch is not `main`, this repo now supports `master` and `work` too.
 5. Wait 1-3 minutes after a successful deploy, then hard refresh the URL.
