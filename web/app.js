@@ -12,259 +12,126 @@ class LCG {
   randInt(max) {
     return Math.floor(this.random() * max);
   }
-  choice(arr) {
-    return arr[this.randInt(arr.length)];
+}
+
+function randomStrategy(length, rng) {
+  let out = "";
+  for (let i = 0; i < length; i++) out += rng.random() < 0.5 ? "0" : "1";
+  return out;
+}
+
+function fitness(strategy, target) {
+  let score = 0;
+  for (let i = 0; i < strategy.length; i++) if (strategy[i] === target[i]) score++;
+  return score;
+}
+
+function tournamentSelect(pop, scores, k, rng) {
+  let bestIdx = rng.randInt(pop.length);
+  for (let i = 1; i < k; i++) {
+    const idx = rng.randInt(pop.length);
+    if (scores[idx] > scores[bestIdx]) bestIdx = idx;
   }
+  return pop[bestIdx];
 }
 
-const ACTIONS = ["L", "M", "H"];
-const COST = { L: 0, M: 5, H: 10 };
-const BENEFIT = { L: 0, M: 10, H: 100 };
-const LENGTH = { L: 16, M: 30, H: 44 };
-const COLOR = { L: "#f59e0b", M: "#16a34a", H: "#2563eb" };
-
-const world = document.getElementById("world");
-const ctx = world.getContext("2d");
-
-let sim = {
-  rng: new LCG(42),
-  agents: [],
-  tick: 0,
-  running: false,
-  timer: null,
-  params: null,
-};
-
-function minEffort(arr) {
-  if (arr.includes("L")) return "L";
-  if (arr.includes("M")) return "M";
-  return "H";
+function crossover(a, b, rng) {
+  if (a.length <= 1) return a;
+  const cut = 1 + rng.randInt(a.length - 1);
+  return a.slice(0, cut) + b.slice(cut);
 }
 
-function individualPayoff(myEffort, groupEfforts) {
-  const groupMin = minEffort(groupEfforts);
-  return BENEFIT[groupMin] - COST[myEffort];
-}
-
-function shuffleIndices(n, rng) {
-  const out = Array.from({ length: n }, (_, i) => i);
-  for (let i = n - 1; i > 0; i--) {
-    const j = rng.randInt(i + 1);
-    [out[i], out[j]] = [out[j], out[i]];
+function mutate(strategy, mutationRate, rng) {
+  let out = "";
+  for (const bit of strategy) {
+    if (rng.random() < mutationRate) out += bit === "0" ? "1" : "0";
+    else out += bit;
   }
   return out;
 }
 
-function formGroups(agentCount, groupSetting, rng) {
-  if (groupSetting === "all") {
-    return [Array.from({ length: agentCount }, (_, i) => i)];
+function runSimulation(params) {
+  const rng = new LCG(params.seed);
+  const target = randomStrategy(params.strategyLength, rng);
+  let population = Array.from({ length: params.populationSize }, () => randomStrategy(params.strategyLength, rng));
+  const history = [];
+
+  for (let g = 0; g <= params.generations; g++) {
+    const scores = population.map((s) => fitness(s, target));
+    let bestIdx = 0;
+    for (let i = 1; i < scores.length; i++) if (scores[i] > scores[bestIdx]) bestIdx = i;
+
+    const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
+    history.push({
+      generation: g,
+      bestFitness: scores[bestIdx],
+      averageFitness: avg,
+      uniqueStrategies: new Set(population).size,
+      bestStrategy: population[bestIdx],
+    });
+
+    if (g === params.generations) break;
+
+    const next = [];
+    while (next.length < params.populationSize) {
+      const a = tournamentSelect(population, scores, params.tournamentSize, rng);
+      const b = tournamentSelect(population, scores, params.tournamentSize, rng);
+      const mixed = rng.random() < params.crossoverRate ? crossover(a, b, rng) : a;
+      next.push(mutate(mixed, params.mutationRate, rng));
+    }
+    population = next;
   }
-  const n = Number(groupSetting);
-  const ids = shuffleIndices(agentCount, rng);
-  const groups = [];
-  for (let i = 0; i < ids.length; i += n) groups.push(ids.slice(i, i + n));
-  return groups;
+
+  return { target, history };
 }
 
 function readParams() {
-  const active = document.querySelector("#scenarioButtons .active");
-  const groupSetting = active.dataset.group;
-  const populationSize = Number(document.getElementById("populationSize").value);
-  const seed = Number(document.getElementById("seed").value);
-  const learningRate = Number(document.getElementById("learningRate").value);
-  const fps = Number(document.getElementById("fps").value);
+  const getNum = (id) => Number(document.getElementById(id).value);
+  const params = {
+    populationSize: getNum("populationSize"),
+    strategyLength: getNum("strategyLength"),
+    generations: getNum("generations"),
+    mutationRate: getNum("mutationRate"),
+    tournamentSize: getNum("tournamentSize"),
+    crossoverRate: getNum("crossoverRate"),
+    seed: getNum("seed"),
+  };
 
-  if (populationSize < 2) throw new Error("Agents must be at least 2.");
-  if (learningRate < 0 || learningRate > 1) throw new Error("Imitation rate must be in [0,1].");
-  if (groupSetting !== "all" && Number(groupSetting) > populationSize) {
-    throw new Error("Group size cannot exceed number of agents.");
+  if (params.populationSize < 2) throw new Error("Population size must be at least 2.");
+  if (params.strategyLength < 2) throw new Error("Strategy length must be at least 2.");
+  if (params.generations < 1) throw new Error("Generations must be at least 1.");
+  if (params.mutationRate < 0 || params.mutationRate > 1) throw new Error("Mutation rate must be between 0 and 1.");
+  if (params.crossoverRate < 0 || params.crossoverRate > 1) throw new Error("Crossover rate must be between 0 and 1.");
+  if (params.tournamentSize < 2 || params.tournamentSize > params.populationSize) {
+    throw new Error("Tournament size must be between 2 and population size.");
   }
 
-  return { groupSetting, populationSize, seed, learningRate, fps };
+  return params;
 }
 
-function setupSimulation() {
-  const params = readParams();
-  sim.params = params;
-  sim.rng = new LCG(params.seed);
-  sim.tick = 0;
-  sim.agents = [];
-
-  for (let i = 0; i < params.populationSize; i++) {
-    sim.agents.push({
-      x: 25 + sim.rng.random() * (world.width - 50),
-      y: 25 + sim.rng.random() * (world.height - 50),
-      theta: sim.rng.random() * Math.PI * 2,
-      effort: sim.rng.choice(ACTIONS),
-      payoff: 0,
-    });
+function renderResults(result) {
+  const body = document.getElementById("resultsBody");
+  body.innerHTML = "";
+  for (const row of result.history) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${row.generation}</td><td>${row.bestFitness}</td><td>${row.averageFitness.toFixed(2)}</td><td>${row.uniqueStrategies}</td><td>${row.bestStrategy}</td>`;
+    body.appendChild(tr);
   }
 
-  document.getElementById("historyBody").innerHTML = "";
-  updateLabels();
-  drawWorld();
+  const finalRow = result.history[result.history.length - 1];
+  document.getElementById("targetString").textContent = result.target;
+  document.getElementById("finalBest").textContent = `${finalRow.bestFitness}/${result.target.length}`;
+  document.getElementById("finalAvg").textContent = finalRow.averageFitness.toFixed(2);
 }
 
-function oneTick() {
-  const groups = formGroups(sim.agents.length, sim.params.groupSetting, sim.rng);
-
-  for (const g of groups) {
-    const efforts = g.map((id) => sim.agents[id].effort);
-    for (const id of g) {
-      sim.agents[id].payoff = individualPayoff(sim.agents[id].effort, efforts);
-    }
-  }
-
-  const sum = { L: 0, M: 0, H: 0 };
-  const count = { L: 0, M: 0, H: 0 };
-  for (const a of sim.agents) {
-    sum[a.effort] += a.payoff;
-    count[a.effort] += 1;
-  }
-
-  const avg = {};
-  for (const e of ACTIONS) avg[e] = count[e] > 0 ? sum[e] / count[e] : -Infinity;
-  const bestEffort = ACTIONS.reduce((best, e) => (avg[e] > avg[best] ? e : best), "L");
-
-  for (const a of sim.agents) {
-    if (sim.rng.random() < sim.params.learningRate) a.effort = bestEffort;
-
-    a.theta += (sim.rng.random() - 0.5) * 0.6;
-    const step = 4;
-    a.x += Math.cos(a.theta) * step;
-    a.y += Math.sin(a.theta) * step;
-
-    if (a.x < 10 || a.x > world.width - 10) a.theta = Math.PI - a.theta;
-    if (a.y < 10 || a.y > world.height - 10) a.theta = -a.theta;
-    a.x = Math.max(10, Math.min(world.width - 10, a.x));
-    a.y = Math.max(10, Math.min(world.height - 10, a.y));
-  }
-
-  sim.tick += 1;
-  updateLabels();
-  appendHistory();
-  drawWorld();
-}
-
-function shares() {
-  const n = sim.agents.length || 1;
-  const c = { L: 0, M: 0, H: 0 };
-  for (const a of sim.agents) c[a.effort] += 1;
-  return { L: c.L / n, M: c.M / n, H: c.H / n };
-}
-
-function averagePayoff() {
-  if (sim.agents.length === 0) return 0;
-  return sim.agents.reduce((acc, a) => acc + a.payoff, 0) / sim.agents.length;
-}
-
-function scenarioLabelValue() {
-  return sim.params.groupSetting === "all" ? `whole class (n=${sim.params.populationSize})` : `n = ${sim.params.groupSetting}`;
-}
-
-function updateLabels() {
-  if (!sim.params) return;
-  const s = shares();
-  document.getElementById("scenarioLabel").textContent = scenarioLabelValue();
-  document.getElementById("tickLabel").textContent = String(sim.tick);
-  document.getElementById("shareL").textContent = `${(s.L * 100).toFixed(1)}%`;
-  document.getElementById("shareM").textContent = `${(s.M * 100).toFixed(1)}%`;
-  document.getElementById("shareH").textContent = `${(s.H * 100).toFixed(1)}%`;
-  document.getElementById("avgPayoff").textContent = averagePayoff().toFixed(1);
-}
-
-function appendHistory() {
-  const s = shares();
-  const tr = document.createElement("tr");
-  tr.innerHTML = `<td>${sim.tick}</td><td>${(s.L * 100).toFixed(1)}%</td><td>${(s.M * 100).toFixed(1)}%</td><td>${(s.H * 100).toFixed(1)}%</td><td>${averagePayoff().toFixed(1)}</td>`;
-  document.getElementById("historyBody").prepend(tr);
-}
-
-function drawWorld() {
-  ctx.clearRect(0, 0, world.width, world.height);
-  ctx.fillStyle = "#f8fafc";
-  ctx.fillRect(0, 0, world.width, world.height);
-
-  for (const a of sim.agents) {
-    const len = LENGTH[a.effort];
-    const dx = Math.cos(a.theta) * len;
-    const dy = Math.sin(a.theta) * len;
-
-    ctx.beginPath();
-    ctx.strokeStyle = COLOR[a.effort];
-    ctx.lineWidth = 3;
-    ctx.moveTo(a.x - dx / 2, a.y - dy / 2);
-    ctx.lineTo(a.x + dx / 2, a.y + dy / 2);
-    ctx.stroke();
-
-    ctx.beginPath();
-    ctx.fillStyle = "#111827";
-    ctx.arc(a.x, a.y, 2.8, 0, Math.PI * 2);
-    ctx.fill();
-  }
-}
-
-function startGo() {
-  if (!sim.params) setupSimulation();
-  if (sim.running) return;
-  sim.running = true;
-  const ms = Math.max(30, Math.round(1000 / sim.params.fps));
-  sim.timer = setInterval(oneTick, ms);
-}
-
-function stopGo() {
-  sim.running = false;
-  if (sim.timer) clearInterval(sim.timer);
-  sim.timer = null;
-}
-
-function selectScenario(button) {
-  document.querySelectorAll("#scenarioButtons button").forEach((b) => {
-    b.classList.remove("active");
-    b.classList.add("ghost");
-  });
-  button.classList.add("active");
-  button.classList.remove("ghost");
-
-  const group = button.dataset.group;
-  if (group === "all") {
-    document.getElementById("populationSize").value = 60;
-  } else {
-    document.getElementById("populationSize").value = Number(group);
-  }
-}
-
-document.querySelectorAll("#scenarioButtons button").forEach((button) => {
-  button.addEventListener("click", () => selectScenario(button));
-});
-
-document.getElementById("setupBtn").addEventListener("click", () => {
+document.getElementById("runButton").addEventListener("click", () => {
   try {
-    stopGo();
-    setupSimulation();
+    const params = readParams();
+    const result = runSimulation(params);
+    renderResults(result);
   } catch (err) {
     alert(err.message);
   }
 });
 
-document.getElementById("goBtn").addEventListener("click", () => {
-  try {
-    startGo();
-  } catch (err) {
-    alert(err.message);
-  }
-});
-
-document.getElementById("stopBtn").addEventListener("click", stopGo);
-
-document.getElementById("stepBtn").addEventListener("click", () => {
-  try {
-    if (!sim.params) setupSimulation();
-    stopGo();
-    oneTick();
-  } catch (err) {
-    alert(err.message);
-  }
-});
-
-setupSimulation();
+document.getElementById("runButton").click();

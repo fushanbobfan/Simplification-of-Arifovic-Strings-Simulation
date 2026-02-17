@@ -1,50 +1,63 @@
 # Simplification-of-Arifovic-Strings-Simulation
 
-A classroom-friendly simulation for PS 115D (UCLA), using **literal strings** where string length represents effort level.
+A teaching-oriented, **much simpler** simulation inspired by Arifovic-style string models.
 
-## What “string” means here
-- **Short string** = low effort (L), cost 0
-- **Medium string** = medium effort (M), cost 5
-- **Long string** = high effort (H), cost 10
+## Public website (GitHub Pages)
+This repo now includes a browser-based simulation in `web/` and a GitHub Actions workflow that deploys it to GitHub Pages.
 
-Group benefit depends on **minimum effort in the group**:
-- min L → 0
-- min M → 10
-- min H → 100
+After you push to your default branch and enable Pages in repo settings, the public site URL will be:
 
-Individual payoff each tick = group benefit − own effort cost.
 
-## Frontend behavior
-The web UI is intentionally NetLogo-like:
-- left panel with controls (`setup`, `go`, `step`, `stop`)
-- right square world where each agent is drawn as a moving literal string
-- string length in the world changes with effort (short/medium/long)
-- scenario buttons for `n=2`, `n=4`, `n=15`, and `whole class`
+- `https://<your-github-username>.github.io/Simplification-of-Arifovic-Strings-Simulation/`
 
-## Run locally
+## How to start it locally
+### 1) Browser version (recommended for class demos)
 ```bash
 python3 -m http.server 8000
 ```
-Open:
+Then open:
 - `http://localhost:8000/web/`
 
-## Deploy to public GitHub Pages
-Use the setting you already have (no `gh-pages` branch required):
+### 2) CLI version (original script)
+```bash
+python3 src/simple_arifovic_sim.py
+```
 
-1. Push this repository to GitHub (`main` branch).
-2. In **Settings → Pages**, set:
-   - Source: **Deploy from a branch**
-   - Branch: `main`
-   - Folder: `/ (root)`
-3. Save, wait 1–2 minutes, then open the site URL.
-
-Notes:
-- Root `index.html` now automatically redirects to `./web/`, so the latest frontend loads from your current Pages setup.
-- If you still see old content, hard-refresh (`Ctrl+Shift+R`) or open in incognito.
-
-Public URL format:
-- `https://<your-github-username>.github.io/Simplification-of-Arifovic-Strings-Simulation/`
+## Project goal
+This repository is for PS 115D (UCLA) classroom use: show the core dynamic of evolutionary learning with strings, not reproduce the full original paper model.
 
 ## Paper staging
-Put the original paper at:
+Place the original Arifovic Strings paper PDF in:
+
 - `docs/papers/arifovic.pdf`
+
+## What is intentionally simplified
+Compared with richer versions in the original literature, this classroom model keeps only:
+
+1. Binary strategy strings for each agent.
+2. A simple fitness score: matching a target string bit-by-bit.
+3. Evolutionary update cycle:
+   - selection (tournament)
+   - crossover (single-point)
+   - mutation (bit flips)
+
+## Deploy to a public website (one-time setup)
+1. Push this repository to GitHub.
+2. In GitHub: **Settings → Pages**.
+3. Under **Build and deployment**, set **Source** to **GitHub Actions**.
+   - (The workflow also includes `enablement: true` to auto-enable Pages if it is currently disabled.)
+4. Push to your default branch (or run the workflow manually in **Actions**).
+5. GitHub will publish the site for anyone on the public internet.
+
+
+## If you see a 404 on GitHub Pages
+Use this checklist:
+
+1. Confirm the repository is **public**.
+2. Go to **Settings → Pages** and set **Source** to **GitHub Actions**.
+3. Open **Actions** and confirm the workflow **"Deploy web simulation to GitHub Pages"** succeeded on your default branch.
+4. If your default branch is not `main`, this repo now supports `master` and `work` too.
+5. Wait 1-3 minutes after a successful deploy, then hard refresh the URL.
+
+## Next step after uploading the PDF
+After `docs/papers/arifovic.pdf` is uploaded, we can map each feature from the paper to this simplified version and document exactly what is omitted for pedagogy.
