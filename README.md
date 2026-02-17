@@ -5,7 +5,7 @@ A teaching-oriented, **much simpler** simulation inspired by Arifovic-style stri
 ## Public website (GitHub Pages)
 This repo now includes a browser-based simulation in `web/` and a GitHub Actions workflow that deploys it to GitHub Pages.
 
-After you push to `main` and enable Pages in repo settings, the public site URL will be:
+After you push to your default branch and enable Pages in repo settings, the public site URL will be:
 
 - `https://<your-github-username>.github.io/Simplification-of-Arifovic-Strings-Simulation/`
 
@@ -44,8 +44,18 @@ Compared with richer versions in the original literature, this classroom model k
 1. Push this repository to GitHub.
 2. In GitHub: **Settings → Pages**.
 3. Under **Build and deployment**, set **Source** to **GitHub Actions**.
-4. Push to `main` (or run the workflow manually in **Actions**).
+4. Push to your default branch (or run the workflow manually in **Actions**).
 5. GitHub will publish the site for anyone on the public internet.
+
+
+## If you see a 404 on GitHub Pages
+Use this checklist:
+
+1. Confirm the repository is **public**.
+2. Go to **Settings → Pages** and set **Source** to **GitHub Actions**.
+3. Open **Actions** and confirm the workflow **"Deploy web simulation to GitHub Pages"** succeeded on your default branch.
+4. If your default branch is not `main`, this repo now supports `master` and `work` too.
+5. Wait 1-3 minutes after a successful deploy, then hard refresh the URL.
 
 ## Next step after uploading the PDF
 After `docs/papers/arifovic.pdf` is uploaded, we can map each feature from the paper to this simplified version and document exactly what is omitted for pedagogy.

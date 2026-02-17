@@ -2,7 +2,8 @@ name: Deploy web simulation to GitHub Pages
 
 on:
   push:
-    branches: ["main"]
+    # Support common default branches so Pages deploy works even if repo is not using `main`.
+    branches: ["main", "master", "work"]
   workflow_dispatch:
 
 permissions:
