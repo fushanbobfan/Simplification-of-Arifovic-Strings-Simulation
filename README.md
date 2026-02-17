@@ -44,10 +44,9 @@ Compared with richer versions in the original literature, this classroom model k
 1. Push this repository to GitHub.
 2. In GitHub: **Settings → Pages**.
 3. Under **Build and deployment**, set **Source** to **GitHub Actions**.
-   - If Actions fails with `Resource not accessible by integration`, disable any auto-enable behavior and explicitly set this once in Settings.
+   - (The workflow also includes `enablement: true` to auto-enable Pages if it is currently disabled.)
 4. Push to your default branch (or run the workflow manually in **Actions**).
 5. GitHub will publish the site for anyone on the public internet.
-6. In **Settings → Actions → General**, ensure workflow permissions allow writes (at least `Read and write permissions`).
 
 
 ## If you see a 404 on GitHub Pages
