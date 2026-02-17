@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Simplified Arifovic Strings Simulation</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; background: #f6f7fb; color: #1f2937; }
+    .wrap { max-width: 1050px; margin: 0 auto; padding: 24px; }
+    h1 { margin-bottom: 6px; }
+    .subtitle { margin-top: 0; color: #4b5563; }
+    .grid { display: grid; grid-template-columns: 320px 1fr; gap: 18px; }
+    .card { background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.08); padding: 16px; }
+    label { display: block; font-size: 14px; margin: 10px 0 4px; }
+    input { width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 8px; }
+    button { margin-top: 14px; padding: 10px 14px; border: 0; border-radius: 10px; cursor: pointer; background: #2563eb; color: white; font-weight: 600; }
+    button:hover { background: #1d4ed8; }
+    .muted { color: #6b7280; font-size: 13px; }
+    .stats { display: grid; grid-template-columns: repeat(3, minmax(120px, 1fr)); gap: 10px; margin-bottom: 14px; }
+    .stat { background: #eef2ff; border-radius: 10px; padding: 10px; }
+    .stat .k { font-size: 12px; color: #4b5563; }
+    .stat .v { font-size: 18px; font-weight: 700; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { padding: 8px; border-bottom: 1px solid #e5e7eb; text-align: left; }
+    th { position: sticky; top: 0; background: white; }
+    .tableWrap { max-height: 420px; overflow: auto; border: 1px solid #e5e7eb; border-radius: 8px; }
+    .footer { margin-top: 16px; font-size: 13px; color: #4b5563; }
+    @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Simplified Arifovic Strings Simulation</h1>
+    <p class="subtitle">A classroom-friendly model for PS 115D (UCLA), intentionally much simpler than the original paper.</p>
+
+    <div class="grid">
+      <section class="card">
+        <h3>Parameters</h3>
+        <label>Population size</label>
+        <input id="populationSize" type="number" min="2" value="60" />
+
+        <label>Strategy length</label>
+        <input id="strategyLength" type="number" min="2" value="12" />
+
+        <label>Generations</label>
+        <input id="generations" type="number" min="1" value="80" />
+
+        <label>Mutation rate (0-1)</label>
+        <input id="mutationRate" type="number" min="0" max="1" step="0.001" value="0.02" />
+
+        <label>Tournament size</label>
+        <input id="tournamentSize" type="number" min="2" value="3" />
+
+        <label>Crossover rate (0-1)</label>
+        <input id="crossoverRate" type="number" min="0" max="1" step="0.01" value="0.8" />
+
+        <label>Seed</label>
+        <input id="seed" type="number" value="42" />
+
+        <button id="runButton">Run simulation</button>
+        <p class="muted">Core mechanics only: selection + crossover + mutation.</p>
+      </section>
+
+      <section class="card">
+        <h3>Results</h3>
+        <div class="stats">
+          <div class="stat"><div class="k">Target string</div><div class="v" id="targetString">-</div></div>
+          <div class="stat"><div class="k">Final best fitness</div><div class="v" id="finalBest">-</div></div>
+          <div class="stat"><div class="k">Final avg fitness</div><div class="v" id="finalAvg">-</div></div>
+        </div>
+        <div class="tableWrap">
+          <table>
+            <thead><tr><th>Gen</th><th>Best</th><th>Avg</th><th>Unique</th><th>Best strategy</th></tr></thead>
+            <tbody id="resultsBody"></tbody>
+          </table>
+        </div>
+        <p class="footer">Tip: re-run with different seeds to show path dependence.</p>
+      </section>
+    </div>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>
