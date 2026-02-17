@@ -268,3 +268,5 @@ document.getElementById("stepBtn").addEventListener("click", () => {
 });
 
 setupSimulation();
+
+window.__simBooted = true;

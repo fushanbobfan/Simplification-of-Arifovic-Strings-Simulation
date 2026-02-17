@@ -48,3 +48,9 @@ Public URL format:
 ## Paper staging
 Put the original paper at:
 - `docs/papers/arifovic.pdf`
+
+
+## If buttons do not respond
+- Hard refresh (`Ctrl+Shift+R`) once to clear stale JS cache.
+- The root page now auto-falls back to `./web/app.js` if `app.js` fails to load.
+- If a script error occurs, a red status message appears under the subtitle.

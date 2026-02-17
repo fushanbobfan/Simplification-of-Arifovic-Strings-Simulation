@@ -56,6 +56,7 @@
   <div class="wrap">
     <h1>Simplified Arifovic Strings Simulation</h1>
     <p class="subtitle">NetLogo-like classroom view: each agent is a literal string (short/medium/long = low/medium/high effort).</p>
+    <p id="bootStatus" style="margin:0 0 10px;color:#b91c1c;font-weight:700;display:none"></p>
 
     <div class="main">
       <section class="card">
@@ -131,6 +132,28 @@
     </div>
   </div>
 
-  <script src="app.js"></script>
+  <script>
+    window.__simBooted = false;
+    window.addEventListener('error', function (e) {
+      var el = document.getElementById('bootStatus');
+      if (el) {
+        el.style.display = 'block';
+        el.textContent = 'Frontend script error: ' + e.message;
+      }
+    });
+    function loadFallback() {
+      if (window.__simBooted) return;
+      var s = document.createElement('script');
+      s.src = './web/app.js?v=fallback';
+      document.body.appendChild(s);
+      var el = document.getElementById('bootStatus');
+      if (el) {
+        el.style.display = 'block';
+        el.textContent = 'Primary script not loaded, using fallback ./web/app.js';
+      }
+    }
+    setTimeout(loadFallback, 1500);
+  </script>
+  <script src="./app.js?v=main" onerror="loadFallback()"></script>
 </body>
 </html>
