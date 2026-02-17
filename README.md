@@ -1,6 +1,5 @@
 # Simplification-of-Arifovic-Strings-Simulation
 
-
 A teaching-oriented, **much simpler** simulation inspired by Arifovic-style string models.
 
 ## Public website (GitHub Pages)
