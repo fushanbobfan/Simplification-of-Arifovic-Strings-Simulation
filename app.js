@@ -26,6 +26,16 @@ const COLOR = { L: "#f59e0b", M: "#16a34a", H: "#2563eb" };
 const world = document.getElementById("world");
 const ctx = world.getContext("2d");
 
+function createRandomAgent(rng) {
+  return {
+    x: 25 + rng.random() * (world.width - 50),
+    y: 25 + rng.random() * (world.height - 50),
+    theta: rng.random() * Math.PI * 2,
+    effort: rng.choice(ACTIONS),
+    payoff: 0,
+  };
+}
+
 let sim = {
   rng: new LCG(42),
   agents: [],
@@ -91,13 +101,7 @@ function setupSimulation() {
   sim.agents = [];
 
   for (let i = 0; i < params.populationSize; i++) {
-    sim.agents.push({
-      x: 25 + sim.rng.random() * (world.width - 50),
-      y: 25 + sim.rng.random() * (world.height - 50),
-      theta: sim.rng.random() * Math.PI * 2,
-      effort: sim.rng.choice(ACTIONS),
-      payoff: 0,
-    });
+    sim.agents.push(createRandomAgent(sim.rng));
   }
 
   document.getElementById("historyBody").innerHTML = "";
@@ -108,16 +112,22 @@ function setupSimulation() {
 function oneTick() {
   const groups = formGroups(sim.agents.length, sim.params.groupSetting, sim.rng);
 
+  const eliminated = new Set();
   for (const g of groups) {
     const efforts = g.map((id) => sim.agents[id].effort);
+    const allLow = efforts.length > 0 && efforts.every((e) => e === "L");
+
     for (const id of g) {
       sim.agents[id].payoff = individualPayoff(sim.agents[id].effort, efforts);
+      if (allLow) eliminated.add(id);
     }
   }
 
+  const survivors = sim.agents.filter((_, idx) => !eliminated.has(idx));
+
   const sum = { L: 0, M: 0, H: 0 };
   const count = { L: 0, M: 0, H: 0 };
-  for (const a of sim.agents) {
+  for (const a of survivors) {
     sum[a.effort] += a.payoff;
     count[a.effort] += 1;
   }
@@ -126,7 +136,7 @@ function oneTick() {
   for (const e of ACTIONS) avg[e] = count[e] > 0 ? sum[e] / count[e] : -Infinity;
   const bestEffort = ACTIONS.reduce((best, e) => (avg[e] > avg[best] ? e : best), "L");
 
-  for (const a of sim.agents) {
+  for (const a of survivors) {
     if (sim.rng.random() < sim.params.learningRate) a.effort = bestEffort;
 
     a.theta += (sim.rng.random() - 0.5) * 0.6;
@@ -139,6 +149,12 @@ function oneTick() {
     a.x = Math.max(10, Math.min(world.width - 10, a.x));
     a.y = Math.max(10, Math.min(world.height - 10, a.y));
   }
+
+  for (let i = 0; i < eliminated.size; i++) {
+    survivors.push(createRandomAgent(sim.rng));
+  }
+
+  sim.agents = survivors;
 
   sim.tick += 1;
   updateLabels();
