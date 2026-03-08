@@ -1,22 +1,37 @@
 # Simplification-of-Arifovic-Strings-Simulation
 
-A classroom-friendly simulation for PS 115D (UCLA), using **literal strings** where string length represents effort level.
+A classroom coordination-game simulation for PS 115D (UCLA), using literal strings where length maps to effort.
 
-## What “string” means here
-- **Short string** = low effort (L), cost 0
-- **Medium string** = medium effort (M), cost 5
-- **Long string** = high effort (H), cost 10
+## Core model (coordination game)
+- Effort states: `L` (short), `M` (medium), `H` (long)
+- Costs: `L=0`, `M=5`, `H=10`
+- Group benefit by minimum effort: `L→0`, `M→10`, `H→100`
+- Individual payoff: `group benefit - own cost` (range `-10` to `90`)
 
-Group benefit depends on **minimum effort in the group**:
-- min L → 0
-- min M → 10
-- min H → 100
+## Simulation flow
+1. Create population (100–300)
+2. Form groups by sample size `n`
+3. Compute payoff and survival probability
+4. Show dead strings in gray for 3–5 frames
+5. Remove dead strings
+6. Add babies to keep population size constant
+7. Repeat for multiple periods
 
-Individual payoff each tick = group benefit − own effort cost.
+## Controls
+- `1) Create population`
+- `2) Make groups`
+- `3) Survival step`
+- `Next frame`
+- `Run periods` / `Stop`
+- Survival rule: payoff-based or equal baseline
+- Baby rule: from alive population or equal random
 
-## Frontend behavior
-The web UI is intentionally NetLogo-like:
-- left panel with controls (`setup`, `go`, `step`, `stop`)
-- right square world where each agent is drawn as a moving literal string
-- string length in the world changes with effort (short/medium/long)
-- scenario buttons for `n=2`, `n=4`, `n=15`, and `whole class`
+## Run locally
+```bash
+python3 -m http.server 8000
+```
+Open:
+- `http://localhost:8000/`
+
+## GitHub Pages
+Use `main / (root)` in Pages settings.

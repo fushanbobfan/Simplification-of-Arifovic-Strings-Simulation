@@ -17,272 +17,270 @@ class LCG {
   }
 }
 
-const ACTIONS = ["L", "M", "H"];
+const EFFORTS = ["L", "M", "H"];
 const COST = { L: 0, M: 5, H: 10 };
 const BENEFIT = { L: 0, M: 10, H: 100 };
-const LENGTH = { L: 16, M: 30, H: 44 };
-const COLOR = { L: "#f59e0b", M: "#16a34a", H: "#2563eb" };
+const CLASS_BY_EFFORT = { L: "low", M: "medium", H: "high" };
 
-const world = document.getElementById("world");
-const ctx = world.getContext("2d");
+const sim = {
+  rng: new LCG(42),
+  period: 0,
+  agents: [],
+  groups: [],
+  params: null,
+  running: false,
+  timer: null,
+  phase: "idle", // idle -> grouped -> survival -> death -> birth
+};
 
-function createRandomAgent(rng) {
+function el(id) { return document.getElementById(id); }
+
+function readParams() {
+  const params = {
+    populationSize: Number(el("populationSize").value),
+    groupSize: Number(el("groupSize").value),
+    periods: Number(el("periods").value),
+    seed: Number(el("seed").value),
+    deathFrames: Number(el("deathFrames").value),
+    fps: Number(el("fps").value),
+    survivalRule: el("survivalRule").value,
+    babyRule: el("babyRule").value,
+  };
+  if (params.populationSize < 100 || params.populationSize > 300) throw new Error("Population must be 100-300.");
+  if (params.groupSize < 2 || params.groupSize > params.populationSize) throw new Error("Group size must be between 2 and population.");
+  if (params.deathFrames < 3 || params.deathFrames > 5) throw new Error("Death frames must be 3-5.");
+  return params;
+}
+
+function createAgent(rng, inheritedEffort = null) {
   return {
-    x: 25 + rng.random() * (world.width - 50),
-    y: 25 + rng.random() * (world.height - 50),
-    theta: rng.random() * Math.PI * 2,
-    effort: rng.choice(ACTIONS),
+    effort: inheritedEffort ?? rng.choice(EFFORTS),
     payoff: 0,
+    pSurvival: 0,
+    dead: false,
+    deathFramesLeft: 0,
   };
 }
 
-let sim = {
-  rng: new LCG(42),
-  agents: [],
-  tick: 0,
-  running: false,
-  timer: null,
-  params: null,
-};
+function createPopulation() {
+  sim.params = readParams();
+  sim.rng = new LCG(sim.params.seed);
+  sim.period = 0;
+  sim.agents = Array.from({ length: sim.params.populationSize }, () => createAgent(sim.rng));
+  sim.groups = [];
+  sim.phase = "idle";
+  el("historyBody").innerHTML = "";
+  setStatus("Population created.");
+  updateStats();
+  renderGroups();
+}
 
-function minEffort(arr) {
-  if (arr.includes("L")) return "L";
-  if (arr.includes("M")) return "M";
+function formGroups() {
+  if (!sim.params) createPopulation();
+  sim.groups = [];
+
+  // no visual shuffle needed; deterministic grouping by current order
+  for (let i = 0; i < sim.agents.length; i += sim.params.groupSize) {
+    const memberIndices = [];
+    for (let j = i; j < Math.min(i + sim.params.groupSize, sim.agents.length); j++) memberIndices.push(j);
+    sim.groups.push({ memberIndices, minEffort: "L", benefit: 0, avgPayoff: 0 });
+  }
+  sim.phase = "grouped";
+  setStatus(`Groups formed: ${sim.groups.length}.`);
+  renderGroups();
+}
+
+function minEffort(efforts) {
+  if (efforts.includes("L")) return "L";
+  if (efforts.includes("M")) return "M";
   return "H";
 }
 
-function individualPayoff(myEffort, groupEfforts) {
-  const groupMin = minEffort(groupEfforts);
-  return BENEFIT[groupMin] - COST[myEffort];
+function payoffToSurvivalProbability(payoff) {
+  // payoff -10..90 mapped to 0..1
+  return Math.max(0, Math.min(1, (payoff + 10) / 100));
 }
 
-function shuffleIndices(n, rng) {
-  const out = Array.from({ length: n }, (_, i) => i);
-  for (let i = n - 1; i > 0; i--) {
-    const j = rng.randInt(i + 1);
-    [out[i], out[j]] = [out[j], out[i]];
-  }
-  return out;
-}
+function evaluateSurvival() {
+  if (sim.groups.length === 0) formGroups();
 
-function formGroups(agentCount, groupSetting, rng) {
-  if (groupSetting === "all") {
-    return [Array.from({ length: agentCount }, (_, i) => i)];
-  }
-  const n = Number(groupSetting);
-  const ids = shuffleIndices(agentCount, rng);
-  const groups = [];
-  for (let i = 0; i < ids.length; i += n) groups.push(ids.slice(i, i + n));
-  return groups;
-}
+  for (const g of sim.groups) {
+    const members = g.memberIndices.map((idx) => sim.agents[idx]);
+    const efforts = members.map((a) => a.effort);
+    g.minEffort = minEffort(efforts);
+    g.benefit = BENEFIT[g.minEffort];
 
-function readParams() {
-  const active = document.querySelector("#scenarioButtons .active");
-  const groupSetting = active.dataset.group;
-  const populationSize = Number(document.getElementById("populationSize").value);
-  const seed = Number(document.getElementById("seed").value);
-  const learningRate = Number(document.getElementById("learningRate").value);
-  const fps = Number(document.getElementById("fps").value);
-
-  if (populationSize < 2) throw new Error("Agents must be at least 2.");
-  if (learningRate < 0 || learningRate > 1) throw new Error("Imitation rate must be in [0,1].");
-  if (groupSetting !== "all" && Number(groupSetting) > populationSize) {
-    throw new Error("Group size cannot exceed number of agents.");
-  }
-
-  return { groupSetting, populationSize, seed, learningRate, fps };
-}
-
-function setupSimulation() {
-  const params = readParams();
-  sim.params = params;
-  sim.rng = new LCG(params.seed);
-  sim.tick = 0;
-  sim.agents = [];
-
-  for (let i = 0; i < params.populationSize; i++) {
-    sim.agents.push(createRandomAgent(sim.rng));
-  }
-
-  document.getElementById("historyBody").innerHTML = "";
-  updateLabels();
-  drawWorld();
-}
-
-function oneTick() {
-  const groups = formGroups(sim.agents.length, sim.params.groupSetting, sim.rng);
-
-  const eliminated = new Set();
-  for (const g of groups) {
-    const efforts = g.map((id) => sim.agents[id].effort);
-    const allLow = efforts.length > 0 && efforts.every((e) => e === "L");
-
-    for (const id of g) {
-      sim.agents[id].payoff = individualPayoff(sim.agents[id].effort, efforts);
-      if (allLow) eliminated.add(id);
+    let sumPayoff = 0;
+    for (const idx of g.memberIndices) {
+      const a = sim.agents[idx];
+      a.payoff = g.benefit - COST[a.effort];
+      a.pSurvival = sim.params.survivalRule === "equal" ? 0.5 : payoffToSurvivalProbability(a.payoff);
+      a.dead = sim.rng.random() > a.pSurvival;
+      a.deathFramesLeft = a.dead ? sim.params.deathFrames : 0;
+      sumPayoff += a.payoff;
     }
+    g.avgPayoff = sumPayoff / g.memberIndices.length;
   }
 
-  const survivors = sim.agents.filter((_, idx) => !eliminated.has(idx));
+  sim.phase = "survival";
+  setStatus("Survival probabilities computed. Dead strings are now gray.");
+  renderGroups();
+}
 
-  const sum = { L: 0, M: 0, H: 0 };
-  const count = { L: 0, M: 0, H: 0 };
-  for (const a of survivors) {
-    sum[a.effort] += a.payoff;
-    count[a.effort] += 1;
+function stepDeathBirthFrame() {
+  if (sim.phase === "grouped") {
+    evaluateSurvival();
+    return;
   }
 
-  const avg = {};
-  for (const e of ACTIONS) avg[e] = count[e] > 0 ? sum[e] / count[e] : -Infinity;
-  const bestEffort = ACTIONS.reduce((best, e) => (avg[e] > avg[best] ? e : best), "L");
+  if (sim.phase === "survival" || sim.phase === "death") {
+    let hasGray = false;
+    for (const a of sim.agents) {
+      if (a.dead && a.deathFramesLeft > 0) {
+        a.deathFramesLeft -= 1;
+        hasGray = hasGray || a.deathFramesLeft > 0;
+      }
+    }
 
-  for (const a of survivors) {
-    if (sim.rng.random() < sim.params.learningRate) a.effort = bestEffort;
+    if (hasGray) {
+      sim.phase = "death";
+      setStatus("Dead strings grayed out (death frames).");
+      renderGroups();
+      return;
+    }
 
-    a.theta += (sim.rng.random() - 0.5) * 0.6;
-    const step = 4;
-    a.x += Math.cos(a.theta) * step;
-    a.y += Math.sin(a.theta) * step;
+    const aliveEfforts = sim.agents.filter((a) => !a.dead).map((a) => a.effort);
+    const survivors = sim.agents.filter((a) => !a.dead);
+    const deadCount = sim.agents.length - survivors.length;
 
-    if (a.x < 10 || a.x > world.width - 10) a.theta = Math.PI - a.theta;
-    if (a.y < 10 || a.y > world.height - 10) a.theta = -a.theta;
-    a.x = Math.max(10, Math.min(world.width - 10, a.x));
-    a.y = Math.max(10, Math.min(world.height - 10, a.y));
-  }
+    for (let i = 0; i < deadCount; i++) {
+      let babyEffort;
+      if (sim.params.babyRule === "fromAlive" && aliveEfforts.length > 0) {
+        babyEffort = sim.rng.choice(aliveEfforts);
+      } else {
+        babyEffort = sim.rng.choice(EFFORTS);
+      }
+      survivors.push(createAgent(sim.rng, babyEffort));
+    }
 
-  for (let i = 0; i < eliminated.size; i++) {
-    survivors.push(createRandomAgent(sim.rng));
-  }
-
-  sim.agents = survivors;
-
-  sim.tick += 1;
-  updateLabels();
-  appendHistory();
-  drawWorld();
-}
-
-function shares() {
-  const n = sim.agents.length || 1;
-  const c = { L: 0, M: 0, H: 0 };
-  for (const a of sim.agents) c[a.effort] += 1;
-  return { L: c.L / n, M: c.M / n, H: c.H / n };
-}
-
-function averagePayoff() {
-  if (sim.agents.length === 0) return 0;
-  return sim.agents.reduce((acc, a) => acc + a.payoff, 0) / sim.agents.length;
-}
-
-function scenarioLabelValue() {
-  return sim.params.groupSetting === "all" ? `whole class (n=${sim.params.populationSize})` : `n = ${sim.params.groupSetting}`;
-}
-
-function updateLabels() {
-  if (!sim.params) return;
-  const s = shares();
-  document.getElementById("scenarioLabel").textContent = scenarioLabelValue();
-  document.getElementById("tickLabel").textContent = String(sim.tick);
-  document.getElementById("shareL").textContent = `${(s.L * 100).toFixed(1)}%`;
-  document.getElementById("shareM").textContent = `${(s.M * 100).toFixed(1)}%`;
-  document.getElementById("shareH").textContent = `${(s.H * 100).toFixed(1)}%`;
-  document.getElementById("avgPayoff").textContent = averagePayoff().toFixed(1);
-}
-
-function appendHistory() {
-  const s = shares();
-  const tr = document.createElement("tr");
-  tr.innerHTML = `<td>${sim.tick}</td><td>${(s.L * 100).toFixed(1)}%</td><td>${(s.M * 100).toFixed(1)}%</td><td>${(s.H * 100).toFixed(1)}%</td><td>${averagePayoff().toFixed(1)}</td>`;
-  document.getElementById("historyBody").prepend(tr);
-}
-
-function drawWorld() {
-  ctx.clearRect(0, 0, world.width, world.height);
-  ctx.fillStyle = "#f8fafc";
-  ctx.fillRect(0, 0, world.width, world.height);
-
-  for (const a of sim.agents) {
-    const len = LENGTH[a.effort];
-    const dx = Math.cos(a.theta) * len;
-    const dy = Math.sin(a.theta) * len;
-
-    ctx.beginPath();
-    ctx.strokeStyle = COLOR[a.effort];
-    ctx.lineWidth = 3;
-    ctx.moveTo(a.x - dx / 2, a.y - dy / 2);
-    ctx.lineTo(a.x + dx / 2, a.y + dy / 2);
-    ctx.stroke();
-
-    ctx.beginPath();
-    ctx.fillStyle = "#111827";
-    ctx.arc(a.x, a.y, 2.8, 0, Math.PI * 2);
-    ctx.fill();
+    sim.agents = survivors;
+    sim.phase = "birth";
+    sim.period += 1;
+    appendHistory();
+    formGroups();
+    setStatus(`Birth completed. New period ${sim.period}.`);
+    renderGroups();
+    return;
   }
 }
 
-function startGo() {
-  if (!sim.params) setupSimulation();
+function runPeriods() {
+  if (!sim.params) createPopulation();
   if (sim.running) return;
   sim.running = true;
   const ms = Math.max(30, Math.round(1000 / sim.params.fps));
-  sim.timer = setInterval(oneTick, ms);
+
+  sim.timer = setInterval(() => {
+    if (sim.period >= sim.params.periods) {
+      stopRun();
+      setStatus("Stopped: target periods reached.");
+      return;
+    }
+
+    if (sim.phase === "idle" || sim.phase === "birth") formGroups();
+    if (sim.phase === "grouped") evaluateSurvival();
+    else stepDeathBirthFrame();
+  }, ms);
 }
 
-function stopGo() {
+function stopRun() {
   sim.running = false;
   if (sim.timer) clearInterval(sim.timer);
   sim.timer = null;
 }
 
-function selectScenario(button) {
-  document.querySelectorAll("#scenarioButtons button").forEach((b) => {
-    b.classList.remove("active");
-    b.classList.add("ghost");
-  });
-  button.classList.add("active");
-  button.classList.remove("ghost");
-
-  const group = button.dataset.group;
-  if (group === "all") {
-    document.getElementById("populationSize").value = 60;
-  } else {
-    document.getElementById("populationSize").value = Number(group);
-  }
+function shareOf(effort) {
+  if (sim.agents.length === 0) return 0;
+  return sim.agents.filter((a) => a.effort === effort).length / sim.agents.length;
 }
 
-document.querySelectorAll("#scenarioButtons button").forEach((button) => {
-  button.addEventListener("click", () => selectScenario(button));
-});
+function updateStats() {
+  el("periodLabel").textContent = String(sim.period);
+  el("aliveLabel").textContent = String(sim.agents.filter((a) => !a.dead).length);
+  el("lLabel").textContent = `${(shareOf("L") * 100).toFixed(1)}%`;
+  el("mLabel").textContent = `${(shareOf("M") * 100).toFixed(1)}%`;
+  el("hLabel").textContent = `${(shareOf("H") * 100).toFixed(1)}%`;
+}
 
-document.getElementById("setupBtn").addEventListener("click", () => {
-  try {
-    stopGo();
-    setupSimulation();
-  } catch (err) {
-    alert(err.message);
+function groupClassByBenefit(benefit) {
+  if (benefit >= 100) return "high";
+  if (benefit >= 10) return "medium";
+  return "low";
+}
+
+function renderGroups() {
+  const grid = el("groupsGrid");
+  grid.innerHTML = "";
+
+  for (let gi = 0; gi < sim.groups.length; gi++) {
+    const g = sim.groups[gi];
+    const box = document.createElement("div");
+    box.className = `groupBox ${groupClassByBenefit(g.benefit)}`;
+
+    const head = document.createElement("div");
+    head.className = "groupHead";
+    head.innerHTML = `<span>Group ${gi + 1} (n=${g.memberIndices.length})</span><span class="points">benefit: ${g.benefit}, avg: ${g.avgPayoff.toFixed(1)}</span>`;
+    box.appendChild(head);
+
+    const strings = document.createElement("div");
+    strings.className = "strings";
+
+    for (const idx of g.memberIndices) {
+      const a = sim.agents[idx];
+      const s = document.createElement("div");
+      s.className = `string ${CLASS_BY_EFFORT[a.effort]}${a.dead ? " dead" : ""}`;
+      s.title = `effort=${a.effort}, payoff=${a.payoff}, p_survival=${a.pSurvival.toFixed(2)}${a.dead ? ", DEAD" : ""}`;
+      strings.appendChild(s);
+    }
+
+    box.appendChild(strings);
+    grid.appendChild(box);
   }
+
+  updateStats();
+}
+
+function appendHistory() {
+  const tr = document.createElement("tr");
+  tr.innerHTML = `<td>${sim.period}</td><td>${sim.agents.filter((a) => !a.dead).length}</td><td>${(shareOf("L") * 100).toFixed(1)}%</td><td>${(shareOf("M") * 100).toFixed(1)}%</td><td>${(shareOf("H") * 100).toFixed(1)}%</td>`;
+  el("historyBody").prepend(tr);
+}
+
+function setStatus(msg) { el("status").textContent = msg; }
+
+el("createBtn").addEventListener("click", () => {
+  try { stopRun(); createPopulation(); }
+  catch (e) { alert(e.message); }
 });
-
-document.getElementById("goBtn").addEventListener("click", () => {
-  try {
-    startGo();
-  } catch (err) {
-    alert(err.message);
-  }
+el("groupBtn").addEventListener("click", () => {
+  try { stopRun(); formGroups(); renderGroups(); }
+  catch (e) { alert(e.message); }
 });
-
-document.getElementById("stopBtn").addEventListener("click", stopGo);
-
-document.getElementById("stepBtn").addEventListener("click", () => {
-  try {
-    if (!sim.params) setupSimulation();
-    stopGo();
-    oneTick();
-  } catch (err) {
-    alert(err.message);
-  }
+el("survivalBtn").addEventListener("click", () => {
+  try { stopRun(); evaluateSurvival(); }
+  catch (e) { alert(e.message); }
 });
+el("nextBtn").addEventListener("click", () => {
+  try { stopRun(); if (!sim.params) createPopulation(); stepDeathBirthFrame(); }
+  catch (e) { alert(e.message); }
+});
+el("runBtn").addEventListener("click", () => {
+  try { if (!sim.params) createPopulation(); runPeriods(); }
+  catch (e) { alert(e.message); }
+});
+el("stopBtn").addEventListener("click", () => { stopRun(); setStatus("Stopped."); });
 
-setupSimulation();
-
+createPopulation();
+formGroups();
+renderGroups();
 window.__simBooted = true;
