@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Coordination Strings Survival Simulation</title>
+  <style>
+    :root {
+      --bg: #e6f0f5;
+      --card: #ffffff;
+      --ink: #1f2937;
+      --muted: #4b5563;
+      --line: #d1d5db;
+      --blue: #0072b2;
+      --orange: #e69f00;
+      --green: #009e73;
+      --gray: #9ca3af;
+      --danger: #dc2626;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: Arial, sans-serif; background: var(--bg); color: var(--ink); }
+    .wrap { max-width: 1300px; margin: 20px auto; background: #f8fbff; border: 1px solid #94a3b8; border-radius: 14px; padding: 16px; }
+    h1 { margin: 0 0 10px; font-size: 40px; }
+    .grid { display: grid; grid-template-columns: 360px 1fr; gap: 14px; }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+
+    .label { font-size: 13px; font-weight: 700; margin-top: 8px; display: block; }
+    input, select { width: 100%; padding: 8px; border: 1px solid #bfc7d1; border-radius: 8px; font-size: 15px; margin-top: 3px; }
+    .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .btn { border: 0; border-radius: 10px; padding: 10px; font-size: 15px; font-weight: 700; cursor: pointer; }
+    .btn.primary { background: #2563eb; color: #fff; }
+    .btn.primary:hover { background: #1d4ed8; }
+    .btn.neutral { background: #e5e7eb; }
+    .btn.stop { background: #ef4444; color: #fff; }
+    .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+
+    .legend { font-size: 12px; color: var(--muted); margin-top: 10px; line-height: 1.4; }
+    .status { margin-top: 8px; font-size: 13px; font-weight: 700; color: #0f766e; }
+
+    .stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 10px; }
+    .stat { background: #eef2ff; border-radius: 10px; padding: 8px; }
+    .stat .k { font-size: 11px; color: var(--muted); }
+    .stat .v { font-size: 22px; font-weight: 700; }
+
+    .groupsArea { max-height: 640px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; padding: 8px; background: #fcfdff; }
+    .groupsGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 8px; }
+    .groupBox { border: 2px solid var(--line); border-radius: 10px; padding: 6px; background: #fff; }
+    .groupBox.low { border-color: var(--blue); }
+    .groupBox.medium { border-color: var(--orange); }
+    .groupBox.high { border-color: var(--green); }
+
+    .groupHead { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 6px; }
+    .points { font-weight: 700; }
+
+    .strings { display: flex; flex-wrap: wrap; gap: 5px; }
+    .string {
+      height: 12px;
+      border-radius: 999px;
+      border: 1px solid #1f2937;
+      position: relative;
+    }
+    .string.low { width: 20px; background: #56b4e9; }
+    .string.medium { width: 36px; background: #f0ad4e; }
+    .string.high { width: 52px; background: #2ca25f; }
+    .string.dead { background: var(--gray) !important; border-color: #6b7280; opacity: 0.7; }
+
+    .history { margin-top: 10px; border: 1px solid var(--line); border-radius: 10px; max-height: 190px; overflow: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { border-bottom: 1px solid var(--line); padding: 6px; text-align: left; }
+    th { position: sticky; top: 0; background: #fff; }
+
+    @media (max-width: 1020px) {
+      .grid { grid-template-columns: 1fr; }
+      .stats { grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Simplified Arifovic Strings Simulation</h1>
+
+    <div class="grid">
+      <section class="card">
+        <h2 style="margin:0 0 8px;">Controls</h2>
+
+        <div class="row2">
+          <div>
+            <span class="label">Population (100–300)</span>
+            <input id="populationSize" type="number" min="100" max="300" value="180" />
+          </div>
+          <div>
+            <span class="label">Group size n</span>
+            <input id="groupSize" type="number" min="2" max="50" value="15" />
+          </div>
+        </div>
+
+        <div class="row2">
+          <div>
+            <span class="label">Periods</span>
+            <input id="periods" type="number" min="1" max="500" value="60" />
+          </div>
+          <div>
+            <span class="label">Seed</span>
+            <input id="seed" type="number" value="42" />
+          </div>
+        </div>
+
+        <div class="row2">
+          <div>
+            <span class="label">Death frames (3–5)</span>
+            <input id="deathFrames" type="number" min="3" max="5" value="4" />
+          </div>
+          <div>
+            <span class="label">Speed (fps)</span>
+            <input id="fps" type="number" min="1" max="30" value="8" />
+          </div>
+        </div>
+
+        <span class="label">Survival rule</span>
+        <select id="survivalRule">
+          <option value="payoff" selected>Payoff-based survival probability</option>
+          <option value="equal">Equal survival probability (baseline)</option>
+        </select>
+
+        <span class="label">Baby rule</span>
+        <select id="babyRule">
+          <option value="fromAlive" selected>Babies sample from alive strings</option>
+          <option value="equalRandom">Babies random L/M/H equally</option>
+        </select>
+
+        <div class="controls">
+          <button class="btn primary" id="createBtn">1) Create population</button>
+          <button class="btn primary" id="groupBtn">2) Make groups</button>
+          <button class="btn primary" id="survivalBtn">3) Survival step</button>
+          <button class="btn neutral" id="nextBtn">Next frame</button>
+          <button class="btn primary" id="runBtn">Run periods</button>
+          <button class="btn stop" id="stopBtn">Stop</button>
+        </div>
+
+        <div id="status" class="status">Ready.</div>
+
+        <p class="legend">
+          Coordination game payoff: benefit from group minimum effort minus own cost.<br />
+          Benefit: L→0, M→10, H→100; Cost: L→0, M→5, H→10; individual payoff range: -10 to 90.<br />
+          Higher payoff ⇒ higher survival probability.
+        </p>
+      </section>
+
+      <section class="card">
+        <div class="stats">
+          <div class="stat"><div class="k">Period</div><div class="v" id="periodLabel">0</div></div>
+          <div class="stat"><div class="k">Alive</div><div class="v" id="aliveLabel">0</div></div>
+          <div class="stat"><div class="k">Share L</div><div class="v" id="lLabel">0%</div></div>
+          <div class="stat"><div class="k">Share M</div><div class="v" id="mLabel">0%</div></div>
+          <div class="stat"><div class="k">Share H</div><div class="v" id="hLabel">0%</div></div>
+        </div>
+
+        <div class="groupsArea">
+          <div id="groupsGrid" class="groupsGrid"></div>
+        </div>
+
+        <div class="history">
+          <table>
+            <thead><tr><th>period</th><th>alive</th><th>L</th><th>M</th><th>H</th></tr></thead>
+            <tbody id="historyBody"></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script src="./app.js?v=coordination-v2"></script>
+</body>
+</html>
