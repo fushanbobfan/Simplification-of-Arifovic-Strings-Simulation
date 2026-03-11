@@ -36,3 +36,9 @@ Open:
 
 ## GitHub Pages
 Use `main / (root)` in Pages settings.
+
+
+## Mutable run-time parameters
+- During `Run periods`, these are applied live: `fps`, `deathFrames`, `preDeathHold`, `survivalRule`, `babyRule`, `periods`.
+- Structural parameters (`populationSize`, `groupSize`, `seed`) trigger a fresh population build when changed.
+- If you want a guaranteed clean restart at any time, click `Clear all state` then `Create population`.

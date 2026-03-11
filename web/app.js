@@ -22,10 +22,11 @@ const sim = {
   groups: [],
   params: null,
   running: false,
-  timer: null,
+  loopHandle: null,
   phase: "idle", // idle -> grouped -> survival_pre -> death -> birth
   preDeathHoldLeft: 0,
   snapshots: [],
+  deathFramesApplied: 0,
 };
 
 function el(id) { return document.getElementById(id); }
@@ -46,7 +47,33 @@ function readParams() {
   if (params.groupSize < 2 || params.groupSize > params.populationSize) throw new Error("Group size must be between 2 and population.");
   if (params.deathFrames < 3 || params.deathFrames > 8) throw new Error("Death frames must be 3-8.");
   if (params.preDeathHold < 1 || params.preDeathHold > 10) throw new Error("Pre-death hold must be 1-10.");
+  if (params.fps < 1 || params.fps > 30) throw new Error("FPS must be 1-30.");
   return params;
+}
+
+function hasStructuralChanges(newParams) {
+  if (!sim.params) return true;
+  return (
+    sim.params.populationSize !== newParams.populationSize ||
+    sim.params.groupSize !== newParams.groupSize ||
+    sim.params.seed !== newParams.seed
+  );
+}
+
+function applyLiveParams() {
+  const p = readParams();
+  if (!sim.params) {
+    sim.params = p;
+    return { structuralChanged: true };
+  }
+  const structuralChanged = hasStructuralChanges(p);
+  sim.params.periods = p.periods;
+  sim.params.deathFrames = p.deathFrames;
+  sim.params.preDeathHold = p.preDeathHold;
+  sim.params.fps = p.fps;
+  sim.params.survivalRule = p.survivalRule;
+  sim.params.babyRule = p.babyRule;
+  return { structuralChanged, next: p };
 }
 
 function createAgent(rng, inheritedEffort = null) {
@@ -82,8 +109,8 @@ function restorePreviousFrame() {
   renderGroups();
 }
 
-function createPopulation() {
-  sim.params = readParams();
+function createPopulation(forcedParams = null) {
+  sim.params = forcedParams ?? readParams();
   sim.rng = new LCG(sim.params.seed);
   sim.period = 0;
   sim.agents = Array.from({ length: sim.params.populationSize }, () => createAgent(sim.rng));
@@ -91,6 +118,7 @@ function createPopulation() {
   sim.phase = "idle";
   sim.preDeathHoldLeft = 0;
   sim.snapshots = [];
+  sim.deathFramesApplied = 0;
   el("historyBody").innerHTML = "";
   setStatus("Population created.");
   updateStats();
@@ -122,6 +150,7 @@ function payoffToSurvivalProbability(payoff) {
 
 function evaluateSurvival() {
   if (sim.groups.length === 0) formGroups();
+  applyLiveParams();
 
   for (const g of sim.groups) {
     const members = g.memberIndices.map((idx) => sim.agents[idx]);
@@ -143,7 +172,8 @@ function evaluateSurvival() {
 
   sim.phase = "survival_pre";
   sim.preDeathHoldLeft = sim.params.preDeathHold;
-  setStatus("Survival probabilities computed. Holding pre-death frames before gray-stage removal.");
+  sim.deathFramesApplied = sim.params.deathFrames;
+  setStatus(`Survival computed. pre-death=${sim.params.preDeathHold}, deathFrames=${sim.params.deathFrames}`);
   renderGroups();
 }
 
@@ -154,6 +184,8 @@ function stepDeathBirthFrame() {
   }
 
   if (sim.phase === "survival_pre") {
+    applyLiveParams();
+    sim.preDeathHoldLeft = Math.min(sim.preDeathHoldLeft, sim.params.preDeathHold);
     sim.preDeathHoldLeft -= 1;
     if (sim.preDeathHoldLeft > 0) {
       setStatus(`Pre-death hold frame (${sim.preDeathHoldLeft} left).`);
@@ -164,6 +196,14 @@ function stepDeathBirthFrame() {
   }
 
   if (sim.phase === "death") {
+    applyLiveParams();
+    if (sim.params.deathFrames !== sim.deathFramesApplied) {
+      const diff = sim.params.deathFrames - sim.deathFramesApplied;
+      for (const a of sim.agents) {
+        if (a.dead && a.deathFramesLeft > 0) a.deathFramesLeft = Math.max(1, a.deathFramesLeft + diff);
+      }
+      sim.deathFramesApplied = sim.params.deathFrames;
+    }
     let hasGray = false;
     for (const a of sim.agents) {
       if (a.dead && a.deathFramesLeft > 0) {
@@ -173,7 +213,7 @@ function stepDeathBirthFrame() {
     }
 
     if (hasGray) {
-      setStatus("Dead strings shown in gray (death frames).\n");
+      setStatus("Dead strings shown in gray (death frames).");
       renderGroups();
       return;
     }
@@ -199,29 +239,54 @@ function stepDeathBirthFrame() {
   }
 }
 
-function runPeriods() {
-  if (!sim.params) createPopulation();
-  if (sim.running) return;
-  sim.running = true;
-  const ms = Math.max(30, Math.round(1000 / sim.params.fps));
+function runLoopStep() {
+  if (!sim.running) return;
+  try {
+    const { structuralChanged, next } = applyLiveParams();
+    if (structuralChanged && sim.params) {
+      // If core structure changed during/after clear, restart population with new settings.
+      createPopulation(next);
+      formGroups();
+    }
 
-  sim.timer = setInterval(() => {
     if (sim.period >= sim.params.periods) {
       stopRun();
       setStatus("Stopped: target periods reached.");
       return;
     }
+
     saveSnapshot();
     if (sim.phase === "idle" || sim.phase === "birth") formGroups();
     if (sim.phase === "grouped") evaluateSurvival();
     else stepDeathBirthFrame();
-  }, ms);
+  } catch (e) {
+    stopRun();
+    alert(e.message);
+    return;
+  }
+
+  const ms = Math.max(30, Math.round(1000 / sim.params.fps));
+  sim.loopHandle = setTimeout(runLoopStep, ms);
+}
+
+function runPeriods() {
+  if (!sim.params) createPopulation();
+  if (sim.running) return;
+
+  const { structuralChanged, next } = applyLiveParams();
+  if (structuralChanged) {
+    createPopulation(next);
+    formGroups();
+  }
+
+  sim.running = true;
+  runLoopStep();
 }
 
 function stopRun() {
   sim.running = false;
-  if (sim.timer) clearInterval(sim.timer);
-  sim.timer = null;
+  if (sim.loopHandle) clearTimeout(sim.loopHandle);
+  sim.loopHandle = null;
 }
 
 function shareOf(effort) {
@@ -312,12 +377,13 @@ function clearAllState() {
   sim.phase = "idle";
   sim.preDeathHoldLeft = 0;
   sim.snapshots = [];
+  sim.deathFramesApplied = 0;
   el("historyBody").innerHTML = "";
   setGroupDetails("Hover over a group box to see min effort, benefit, and average payoff.");
   setStringDetails("Hover over a string bar to see effort, payoff, and survival probability.");
   updateStats();
   renderGroups();
-  setStatus("All simulation state cleared. Update parameters, then click Create population.");
+  setStatus("All simulation state cleared. Parameters now uncoupled from old run; click Create population.");
 }
 
 el("createBtn").addEventListener("click", () => {
@@ -337,7 +403,7 @@ el("prevBtn").addEventListener("click", () => {
   catch (e) { alert(e.message); }
 });
 el("nextBtn").addEventListener("click", () => {
-  try { stopRun(); if (!sim.params) createPopulation(); saveSnapshot(); stepDeathBirthFrame(); }
+  try { stopRun(); if (!sim.params) createPopulation(); applyLiveParams(); saveSnapshot(); stepDeathBirthFrame(); }
   catch (e) { alert(e.message); }
 });
 el("runBtn").addEventListener("click", () => {
