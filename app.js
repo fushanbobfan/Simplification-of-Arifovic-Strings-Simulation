@@ -303,6 +303,23 @@ function appendHistory() {
 
 function setStatus(msg) { el("status").textContent = msg; }
 
+function clearAllState() {
+  stopRun();
+  sim.period = 0;
+  sim.agents = [];
+  sim.groups = [];
+  sim.params = null;
+  sim.phase = "idle";
+  sim.preDeathHoldLeft = 0;
+  sim.snapshots = [];
+  el("historyBody").innerHTML = "";
+  setGroupDetails("Hover over a group box to see min effort, benefit, and average payoff.");
+  setStringDetails("Hover over a string bar to see effort, payoff, and survival probability.");
+  updateStats();
+  renderGroups();
+  setStatus("All simulation state cleared. Update parameters, then click Create population.");
+}
+
 el("createBtn").addEventListener("click", () => {
   try { stopRun(); createPopulation(); }
   catch (e) { alert(e.message); }
@@ -328,6 +345,7 @@ el("runBtn").addEventListener("click", () => {
   catch (e) { alert(e.message); }
 });
 el("stopBtn").addEventListener("click", () => { stopRun(); setStatus("Stopped."); });
+el("clearBtn").addEventListener("click", () => { clearAllState(); });
 
 createPopulation();
 formGroups();

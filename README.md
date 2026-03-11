@@ -23,6 +23,7 @@ A classroom coordination-game simulation for PS 115D (UCLA), using literal strin
 - `3) Survival step`
 - `Next frame`
 - `Run periods` / `Stop`
+- `Clear all state` (reset snapshots, groups, history, and simulation state so new parameters are guaranteed to apply)
 - Survival rule: payoff-based or equal baseline
 - Baby rule: from alive population or equal random
 
