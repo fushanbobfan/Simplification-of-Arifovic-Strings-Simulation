@@ -372,9 +372,11 @@ function stepDeathBirthFrame() {
     appendHistory();
     addEvent(`Birth stage: replaced ${deadCount} dead strings.`);
     setStatus(`Birth completed. New period ${sim.period}.`);
+    formGroups();
     renderGroups();
     return;
   }
+  stepDeathBirthFrame();
 }
 
 
