@@ -213,6 +213,40 @@ function resetSimulation() {
   setStatus("Simulation reset.");
 }
 
+function resetInputsToDefaults() {
+  el("populationSize").value = String(DEFAULTS.populationSize);
+  el("groupSize").value = String(DEFAULTS.groupSize);
+  el("periods").value = String(DEFAULTS.periods);
+  el("seed").value = String(DEFAULTS.seed);
+  el("fps").value = String(DEFAULTS.fps);
+  el("survivalConstant").value = String(DEFAULTS.survivalConstant);
+  el("babyRule").value = DEFAULTS.babyRule;
+  el("babyMixP").value = String(DEFAULTS.babyMixP);
+  updateBabyRuleUI();
+}
+
+function resetSimulation() {
+  stopRun();
+  resetInputsToDefaults();
+  sim.params = null;
+  sim.period = 0;
+  sim.agents = [];
+  sim.groups = [];
+  sim.snapshots = [];
+  sim.preDeathHoldLeft = 0;
+  sim.birthHoldLeft = 0;
+  sim.rng = new LCG(DEFAULTS.seed);
+  el("historyBody").innerHTML = "";
+  el("eventLogList").innerHTML = "";
+  setGroupDetails("Hover over a group box to see min effort, benefit, and average payoff.");
+  setStringDetails("Hover over a string bar to see effort, payoff, and survival probability.");
+  createPopulation();
+  formGroups();
+  renderGroups();
+  addEvent("Simulation reset to initial defaults.");
+  setStatus("Simulation reset.");
+}
+
 function createPopulation(forcedParams = null) {
   sim.params = forcedParams ?? readParams();
   sim.mode = sim.params.mode;
@@ -376,6 +410,20 @@ function stepDeathBirthFrame() {
     renderGroups();
     return;
   }
+  stepDeathBirthFrame();
+}
+
+
+function advanceOnePhase() {
+  if (sim.phase === "idle") {
+    formGroups();
+    return;
+  }
+  if (sim.phase === "grouped") {
+    evaluateSurvival();
+    return;
+  }
+  stepDeathBirthFrame();
 }
 
 
