@@ -14,7 +14,7 @@ const EFFORTS = ["L", "M", "H"];
 const COST = { L: 0, M: 5, H: 10 };
 const BENEFIT = { L: 0, M: 10, H: 100 };
 const CLASS_BY_EFFORT = { L: "low", M: "medium", H: "high" };
-const EASY_SURVIVAL_MULTIPLIER = 0.85;
+const SIMPLE_SURVIVAL_MULTIPLIER = 0.85;
 const DEATH_FRAMES = 5;
 const PRE_DEATH_HOLD = 3;
 const BIRTH_HOLD_FRAMES = 4;
@@ -41,7 +41,7 @@ const sim = {
   preDeathHoldLeft: 0,
   birthHoldLeft: 0,
   snapshots: [],
-  mode: "easy",
+  mode: "simple",
 };
 
 function el(id) { return document.getElementById(id); }
@@ -85,12 +85,12 @@ function updateBabyRuleUI() {
 }
 
 function updateModeUI() {
-  const isEasy = sim.mode === "easy";
-  el("modeLabel").textContent = isEasy ? "Easy version" : "Hard version";
-  el("modeToggleBtn").textContent = isEasy ? "Switch to hard" : "Switch to easy";
-  el("controlsTitle").textContent = isEasy ? "Easy Version Controls" : "Hard Version Controls";
-  el("hardControls").style.display = isEasy ? "none" : "block";
-  const multiplier = isEasy ? EASY_SURVIVAL_MULTIPLIER : Number(el("survivalConstant").value);
+  const isSimple = sim.mode === "simple";
+  el("modeLabel").textContent = isSimple ? "Simple version" : "Complex version";
+  el("modeToggleBtn").textContent = isSimple ? "Switch to complex" : "Switch to simple";
+  el("controlsTitle").textContent = isSimple ? "Simple Version Controls" : "Complex Version Controls";
+  el("complexControls").style.display = isSimple ? "none" : "block";
+  const multiplier = isSimple ? SIMPLE_SURVIVAL_MULTIPLIER : Number(el("survivalConstant").value);
   el("survivalEquationText").textContent = currentSurvivalEquation(multiplier);
 }
 
@@ -105,13 +105,13 @@ function readParams() {
     fps: Number(el("fps").value),
     babyRule: el("babyRule").value,
     babyMixP: Number(el("babyMixP").value),
-    survivalConstant: mode === "easy" ? EASY_SURVIVAL_MULTIPLIER : Number(el("survivalConstant").value),
+    survivalConstant: mode === "simple" ? SIMPLE_SURVIVAL_MULTIPLIER : Number(el("survivalConstant").value),
   };
 
   if (params.populationSize < 100 || params.populationSize > 300) throw new Error("Population must be 100-300.");
   if (params.groupSize < 2 || params.groupSize > params.populationSize) throw new Error("Group size must be between 2 and population.");
   if (params.fps < 1 || params.fps > 30) throw new Error("FPS must be 1-30.");
-  if (Number.isNaN(params.survivalConstant) || params.survivalConstant < 0 || params.survivalConstant > 2) throw new Error("Hard-mode c must be 0-2.");
+  if (Number.isNaN(params.survivalConstant) || params.survivalConstant < 0 || params.survivalConstant > 2) throw new Error("Complex-mode c must be 0-2.");
   if (Number.isNaN(params.babyMixP) || params.babyMixP < 0 || params.babyMixP > 1) throw new Error("Mixed baby rule p must be 0-1.");
   return params;
 }
@@ -268,7 +268,7 @@ function minEffort(efforts) {
 }
 
 function payoffToSurvivalProbability(payoff) {
-  const c = sim.params?.survivalConstant ?? EASY_SURVIVAL_MULTIPLIER;
+  const c = sim.params?.survivalConstant ?? SIMPLE_SURVIVAL_MULTIPLIER;
   return Math.max(0, Math.min(1, (c * payoff + 10) / 100));
 }
 
@@ -374,6 +374,19 @@ function stepDeathBirthFrame() {
     addEvent(`Birth stage: replaced ${deadCount} dead strings.`);
     setStatus(`Birth stage entered. New period ${sim.period}.`);
     renderGroups();
+    return;
+  }
+  stepDeathBirthFrame();
+}
+
+
+function advanceOnePhase() {
+  if (sim.phase === "idle") {
+    formGroups();
+    return;
+  }
+  if (sim.phase === "grouped") {
+    evaluateSurvival();
     return;
   }
   stepDeathBirthFrame();
@@ -538,7 +551,7 @@ function appendHistory() {
 }
 
 el("modeToggleBtn").addEventListener("click", () => {
-  sim.mode = sim.mode === "easy" ? "hard" : "easy";
+  sim.mode = sim.mode === "simple" ? "complex" : "simple";
   updateModeUI();
   if (sim.params) {
     applyLiveParams();
@@ -551,7 +564,7 @@ el("babyRule").addEventListener("change", () => {
   if (sim.params) applyLiveParams();
 });
 el("survivalConstant").addEventListener("input", () => {
-  if (sim.mode === "hard") {
+  if (sim.mode === "complex") {
     updateModeUI();
     if (sim.params) applyLiveParams();
   }
