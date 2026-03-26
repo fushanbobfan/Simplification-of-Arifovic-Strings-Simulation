@@ -15,24 +15,82 @@ const COST = { L: 0, M: 5, H: 10 };
 const BENEFIT = { L: 0, M: 10, H: 100 };
 const CLASS_BY_EFFORT = { L: "low", M: "medium", H: "high" };
 const EASY_SURVIVAL_MULTIPLIER = 0.85;
-const DEATH_FRAMES = 1;
-const PRE_DEATH_HOLD = 1;
+const DEATH_FRAMES = 5;
+const PRE_DEATH_HOLD = 3;
+const DEFAULTS = {
+  populationSize: 180,
+  groupSize: 15,
+  periods: 60,
+  seed: 42,
+  fps: 1,
+  survivalConstant: 0.85,
+  babyRule: "fromAlive",
+  babyMixP: 0.5,
+};
 
 const sim = {
-  rng: new LCG(42),
+  rng: new LCG(DEFAULTS.seed),
   period: 0,
   agents: [],
   groups: [],
   params: null,
   running: false,
   loopHandle: null,
-  phase: "idle", // idle -> grouped -> survival_pre -> death -> birth
+  phase: "idle",
   preDeathHoldLeft: 0,
   snapshots: [],
   mode: "easy",
 };
 
 function el(id) { return document.getElementById(id); }
+function deepClone(obj) { return JSON.parse(JSON.stringify(obj)); }
+
+function addEvent(message) {
+  const ul = el("eventLogList");
+  const li = document.createElement("li");
+  li.textContent = `[P${sim.period}] ${message}`;
+  ul.prepend(li);
+  while (ul.children.length > 8) ul.removeChild(ul.lastChild);
+}
+
+function setPhase(phase) {
+  sim.phase = phase;
+  const phases = ["idle", "grouped", "survival_pre", "death", "birth"];
+  const hints = {
+    idle: "Create population and groups to start.",
+    grouped: "Groups are formed from a shuffled population.",
+    survival_pre: "Payoffs and survival probabilities are computed.",
+    death: "Dead strings are shown in gray for several frames.",
+    birth: "Dead strings are replaced by babies to restore population size.",
+  };
+  el("phaseNow").textContent = `Current phase: ${phase}`;
+  el("phaseHint").textContent = hints[phase] ?? "";
+
+  for (const p of phases) {
+    const node = el(`phase-${p}`);
+    if (!node) continue;
+    if (p === phase) node.classList.add("active");
+    else node.classList.remove("active");
+  }
+}
+
+function currentSurvivalEquation(multiplier) {
+  return `P(survival) = (${multiplier.toFixed(2)} × payoff + 10) / 100`;
+}
+
+function updateBabyRuleUI() {
+  el("mixedBabyControls").style.display = el("babyRule").value === "mixedP" ? "block" : "none";
+}
+
+function updateModeUI() {
+  const isEasy = sim.mode === "easy";
+  el("modeLabel").textContent = isEasy ? "Easy version" : "Hard version";
+  el("modeToggleBtn").textContent = isEasy ? "Switch to hard" : "Switch to easy";
+  el("controlsTitle").textContent = isEasy ? "Easy Version Controls" : "Hard Version Controls";
+  el("hardControls").style.display = isEasy ? "none" : "block";
+  const multiplier = isEasy ? EASY_SURVIVAL_MULTIPLIER : Number(el("survivalConstant").value);
+  el("survivalEquationText").textContent = currentSurvivalEquation(multiplier);
+}
 
 function currentSurvivalEquation(multiplier) {
   return `P(survival) = (${multiplier.toFixed(2)} × payoff + 10) / 100`;
@@ -59,16 +117,15 @@ function readParams() {
     seed: Number(el("seed").value),
     fps: Number(el("fps").value),
     babyRule: el("babyRule").value,
+    babyMixP: Number(el("babyMixP").value),
     survivalConstant: mode === "easy" ? EASY_SURVIVAL_MULTIPLIER : Number(el("survivalConstant").value),
   };
 
   if (params.populationSize < 100 || params.populationSize > 300) throw new Error("Population must be 100-300.");
   if (params.groupSize < 2 || params.groupSize > params.populationSize) throw new Error("Group size must be between 2 and population.");
   if (params.fps < 1 || params.fps > 30) throw new Error("FPS must be 1-30.");
-  if (Number.isNaN(params.survivalConstant) || params.survivalConstant < 0 || params.survivalConstant > 2) {
-    throw new Error("Hard-mode survival constant c must be between 0 and 2.");
-  }
-
+  if (Number.isNaN(params.survivalConstant) || params.survivalConstant < 0 || params.survivalConstant > 2) throw new Error("Hard-mode c must be 0-2.");
+  if (Number.isNaN(params.babyMixP) || params.babyMixP < 0 || params.babyMixP > 1) throw new Error("Mixed baby rule p must be 0-1.");
   return params;
 }
 
@@ -91,6 +148,7 @@ function applyLiveParams() {
   sim.params.periods = p.periods;
   sim.params.fps = p.fps;
   sim.params.babyRule = p.babyRule;
+  sim.params.babyMixP = p.babyMixP;
   sim.params.mode = p.mode;
   sim.params.survivalConstant = p.survivalConstant;
   return { structuralChanged, next: p };
@@ -99,8 +157,6 @@ function applyLiveParams() {
 function createAgent(rng, inheritedEffort = null) {
   return { effort: inheritedEffort ?? rng.choice(EFFORTS), payoff: 0, pSurvival: 0, dead: false, deathFramesLeft: 0 };
 }
-
-function deepClone(obj) { return JSON.parse(JSON.stringify(obj)); }
 
 function saveSnapshot() {
   sim.snapshots.push({
@@ -112,6 +168,7 @@ function saveSnapshot() {
     preDeathHoldLeft: sim.preDeathHoldLeft,
     status: el("status").textContent,
     mode: sim.mode,
+    events: el("eventLogList").innerHTML,
   });
   if (sim.snapshots.length > 200) sim.snapshots.shift();
 }
@@ -124,12 +181,46 @@ function restorePreviousFrame() {
   sim.agents = s.agents;
   sim.groups = s.groups;
   sim.params = s.params;
-  sim.phase = s.phase;
-  sim.preDeathHoldLeft = s.preDeathHoldLeft;
   sim.mode = s.mode ?? sim.mode;
+  sim.preDeathHoldLeft = s.preDeathHoldLeft;
+  setPhase(s.phase);
+  el("eventLogList").innerHTML = s.events ?? "";
   updateModeUI();
   setStatus(`Restored previous frame. ${s.status}`);
   renderGroups();
+}
+
+function resetInputsToDefaults() {
+  el("populationSize").value = String(DEFAULTS.populationSize);
+  el("groupSize").value = String(DEFAULTS.groupSize);
+  el("periods").value = String(DEFAULTS.periods);
+  el("seed").value = String(DEFAULTS.seed);
+  el("fps").value = String(DEFAULTS.fps);
+  el("survivalConstant").value = String(DEFAULTS.survivalConstant);
+  el("babyRule").value = DEFAULTS.babyRule;
+  el("babyMixP").value = String(DEFAULTS.babyMixP);
+  updateBabyRuleUI();
+}
+
+function resetSimulation() {
+  stopRun();
+  resetInputsToDefaults();
+  sim.params = null;
+  sim.period = 0;
+  sim.agents = [];
+  sim.groups = [];
+  sim.snapshots = [];
+  sim.preDeathHoldLeft = 0;
+  sim.rng = new LCG(DEFAULTS.seed);
+  el("historyBody").innerHTML = "";
+  el("eventLogList").innerHTML = "";
+  setGroupDetails("Hover over a group box to see min effort, benefit, and average payoff.");
+  setStringDetails("Hover over a string bar to see effort, payoff, and survival probability.");
+  createPopulation();
+  formGroups();
+  renderGroups();
+  addEvent("Simulation reset to initial defaults.");
+  setStatus("Simulation reset.");
 }
 
 function createPopulation(forcedParams = null) {
@@ -139,26 +230,43 @@ function createPopulation(forcedParams = null) {
   sim.period = 0;
   sim.agents = Array.from({ length: sim.params.populationSize }, () => createAgent(sim.rng));
   sim.groups = [];
-  sim.phase = "idle";
   sim.preDeathHoldLeft = 0;
   sim.snapshots = [];
   el("historyBody").innerHTML = "";
+  setPhase("idle");
   updateModeUI();
   setStatus("Population created.");
+  addEvent("Created a new population.");
   updateStats();
   renderGroups();
+}
+
+function shuffledIndices(length, rng) {
+  const arr = Array.from({ length }, (_, i) => i);
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = rng.randInt(i + 1);
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
 }
 
 function formGroups() {
   if (!sim.params) createPopulation();
   sim.groups = [];
-  for (let i = 0; i < sim.agents.length; i += sim.params.groupSize) {
-    const memberIndices = [];
-    for (let j = i; j < Math.min(i + sim.params.groupSize, sim.agents.length); j++) memberIndices.push(j);
-    sim.groups.push({ memberIndices, minEffort: "L", benefit: 0, avgPayoff: 0 });
+  const order = shuffledIndices(sim.agents.length, sim.rng);
+
+  for (let i = 0; i < order.length; i += sim.params.groupSize) {
+    sim.groups.push({
+      memberIndices: order.slice(i, Math.min(i + sim.params.groupSize, order.length)),
+      minEffort: "L",
+      benefit: 0,
+      avgPayoff: 0,
+    });
   }
-  sim.phase = "grouped";
+
+  setPhase("grouped");
   setStatus(`Groups formed: ${sim.groups.length}.`);
+  addEvent(`Formed ${sim.groups.length} groups from shuffled population.`);
   renderGroups();
 }
 
@@ -178,6 +286,7 @@ function evaluateSurvival() {
   applyLiveParams();
   updateModeUI();
 
+  let deadCount = 0;
   for (const g of sim.groups) {
     const members = g.memberIndices.map((idx) => sim.agents[idx]);
     const efforts = members.map((a) => a.effort);
@@ -191,13 +300,15 @@ function evaluateSurvival() {
       a.pSurvival = payoffToSurvivalProbability(a.payoff);
       a.dead = sim.rng.random() > a.pSurvival;
       a.deathFramesLeft = a.dead ? DEATH_FRAMES : 0;
+      if (a.dead) deadCount += 1;
       sumPayoff += a.payoff;
     }
     g.avgPayoff = sumPayoff / g.memberIndices.length;
   }
 
-  sim.phase = "survival_pre";
+  setPhase("survival_pre");
   sim.preDeathHoldLeft = PRE_DEATH_HOLD;
+  addEvent(`Computed survival probabilities. Dead this step: ${deadCount}.`);
   setStatus(`Survival computed (${sim.mode} mode).`);
   renderGroups();
 }
@@ -211,11 +322,12 @@ function stepDeathBirthFrame() {
   if (sim.phase === "survival_pre") {
     sim.preDeathHoldLeft -= 1;
     if (sim.preDeathHoldLeft > 0) {
-      setStatus(`Pre-death hold frame (${sim.preDeathHoldLeft} left).`);
+      setStatus(`Showing payoff results before death (${sim.preDeathHoldLeft} frames left).`);
       renderGroups();
       return;
     }
-    sim.phase = "death";
+    setPhase("death");
+    addEvent("Entered death visualization stage.");
   }
 
   if (sim.phase === "death") {
@@ -228,7 +340,7 @@ function stepDeathBirthFrame() {
     }
 
     if (hasGray) {
-      setStatus("Dead strings shown in gray (death frames).");
+      setStatus("Dead strings shown in gray (visual transition).\n");
       renderGroups();
       return;
     }
@@ -239,17 +351,24 @@ function stepDeathBirthFrame() {
 
     for (let i = 0; i < deadCount; i++) {
       let babyEffort;
-      if (sim.params.babyRule === "fromAlive" && aliveEfforts.length > 0) babyEffort = sim.rng.choice(aliveEfforts);
-      else babyEffort = sim.rng.choice(EFFORTS);
+      if (sim.params.babyRule === "fromAlive" && aliveEfforts.length > 0) {
+        babyEffort = sim.rng.choice(aliveEfforts);
+      } else if (sim.params.babyRule === "mixedP") {
+        if (sim.rng.random() < sim.params.babyMixP && aliveEfforts.length > 0) babyEffort = sim.rng.choice(aliveEfforts);
+        else babyEffort = sim.rng.choice(EFFORTS);
+      } else {
+        babyEffort = sim.rng.choice(EFFORTS);
+      }
       survivors.push(createAgent(sim.rng, babyEffort));
     }
 
     sim.agents = survivors;
-    sim.phase = "birth";
+    setPhase("birth");
     sim.period += 1;
     appendHistory();
-    formGroups();
+    addEvent(`Birth stage: replaced ${deadCount} dead strings.`);
     setStatus(`Birth completed. New period ${sim.period}.`);
+    formGroups();
     renderGroups();
   }
 }
@@ -266,6 +385,7 @@ function runLoopStep() {
     if (sim.period >= sim.params.periods) {
       stopRun();
       setStatus("Stopped: target periods reached.");
+      addEvent("Run finished at target period.");
       return;
     }
 
@@ -286,14 +406,13 @@ function runLoopStep() {
 function runPeriods() {
   if (!sim.params) createPopulation();
   if (sim.running) return;
-
   const { structuralChanged, next } = applyLiveParams();
   if (structuralChanged) {
     createPopulation(next);
     formGroups();
   }
-
   sim.running = true;
+  addEvent("Auto-run started.");
   runLoopStep();
 }
 
@@ -324,6 +443,7 @@ function groupClassByBenefit(benefit) {
 
 function setGroupDetails(text) { el("groupDetails").textContent = text; }
 function setStringDetails(text) { el("stringDetails").textContent = text; }
+function setStatus(msg) { el("status").textContent = msg; }
 
 function renderGroups() {
   const grid = el("groupsGrid");
@@ -336,11 +456,7 @@ function renderGroups() {
 
     box.addEventListener("mouseenter", () => {
       setGroupDetails(
-        `Group ${gi + 1}\n` +
-        `Size: ${g.memberIndices.length}\n` +
-        `Minimum effort: ${g.minEffort}\n` +
-        `Group benefit: ${g.benefit}\n` +
-        `Average payoff: ${g.avgPayoff.toFixed(2)}`
+        `Group ${gi + 1}\nSize: ${g.memberIndices.length}\nMinimum effort: ${g.minEffort}\nGroup benefit: ${g.benefit}\nAverage payoff: ${g.avgPayoff.toFixed(2)}`
       );
     });
 
@@ -358,10 +474,7 @@ function renderGroups() {
       s.className = `string ${CLASS_BY_EFFORT[a.effort]}${a.dead ? " dead" : ""}`;
       s.addEventListener("mouseenter", () => {
         setStringDetails(
-          `Effort: ${a.effort}\n` +
-          `Payoff: ${a.payoff.toFixed(2)}\n` +
-          `P(survival): ${a.pSurvival.toFixed(2)}\n` +
-          `State: ${a.dead ? "Dead/gray" : "Alive"}`
+          `Effort: ${a.effort}\nPayoff: ${a.payoff.toFixed(2)}\nP(survival): ${a.pSurvival.toFixed(2)}\nState: ${a.dead ? "Dead/gray" : "Alive"}`
         );
       });
       strings.appendChild(s);
@@ -380,17 +493,19 @@ function appendHistory() {
   el("historyBody").prepend(tr);
 }
 
-function setStatus(msg) { el("status").textContent = msg; }
-
 el("modeToggleBtn").addEventListener("click", () => {
   sim.mode = sim.mode === "easy" ? "hard" : "easy";
   updateModeUI();
   if (sim.params) {
     applyLiveParams();
+    addEvent(`Switched to ${sim.mode} mode.`);
     setStatus(`Switched to ${sim.mode} mode.`);
   }
 });
-
+el("babyRule").addEventListener("change", () => {
+  updateBabyRuleUI();
+  if (sim.params) applyLiveParams();
+});
 el("survivalConstant").addEventListener("input", () => {
   if (sim.mode === "hard") {
     updateModeUI();
@@ -398,34 +513,26 @@ el("survivalConstant").addEventListener("input", () => {
   }
 });
 
-el("createBtn").addEventListener("click", () => {
-  try { stopRun(); createPopulation(); }
-  catch (e) { alert(e.message); }
-});
-el("groupBtn").addEventListener("click", () => {
-  try { stopRun(); saveSnapshot(); formGroups(); renderGroups(); }
-  catch (e) { alert(e.message); }
-});
-el("survivalBtn").addEventListener("click", () => {
-  try { stopRun(); saveSnapshot(); evaluateSurvival(); }
-  catch (e) { alert(e.message); }
-});
-el("prevBtn").addEventListener("click", () => {
-  try { restorePreviousFrame(); }
-  catch (e) { alert(e.message); }
-});
+el("createBtn").addEventListener("click", () => { try { stopRun(); createPopulation(); } catch (e) { alert(e.message); } });
+el("groupBtn").addEventListener("click", () => { try { stopRun(); saveSnapshot(); formGroups(); } catch (e) { alert(e.message); } });
+el("survivalBtn").addEventListener("click", () => { try { stopRun(); saveSnapshot(); evaluateSurvival(); } catch (e) { alert(e.message); } });
+el("prevBtn").addEventListener("click", () => { try { restorePreviousFrame(); } catch (e) { alert(e.message); } });
 el("nextBtn").addEventListener("click", () => {
-  try { stopRun(); if (!sim.params) createPopulation(); applyLiveParams(); saveSnapshot(); stepDeathBirthFrame(); }
-  catch (e) { alert(e.message); }
+  try {
+    stopRun();
+    if (!sim.params) createPopulation();
+    applyLiveParams();
+    saveSnapshot();
+    stepDeathBirthFrame();
+  } catch (e) { alert(e.message); }
 });
-el("runBtn").addEventListener("click", () => {
-  try { if (!sim.params) createPopulation(); runPeriods(); }
-  catch (e) { alert(e.message); }
-});
-el("stopBtn").addEventListener("click", () => { stopRun(); setStatus("Stopped."); });
+el("runBtn").addEventListener("click", () => { try { if (!sim.params) createPopulation(); runPeriods(); } catch (e) { alert(e.message); } });
+el("stopBtn").addEventListener("click", () => { stopRun(); addEvent("Run stopped by user."); setStatus("Stopped."); });
+el("resetBtn").addEventListener("click", () => { resetSimulation(); });
 
+resetInputsToDefaults();
+updateBabyRuleUI();
 updateModeUI();
-createPopulation();
-formGroups();
-renderGroups();
+setPhase("idle");
+resetSimulation();
 window.__simBooted = true;
