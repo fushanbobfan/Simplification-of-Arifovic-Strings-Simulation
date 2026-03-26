@@ -33,6 +33,19 @@
     .btn.stop { background: #ef4444; color: #fff; }
     .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
 
+    .modeBar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 8px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: #f3f7ff;
+      margin-bottom: 8px;
+    }
+    .modeText { font-size: 14px; font-weight: 700; }
+
     .legend { font-size: 12px; color: var(--muted); margin-top: 10px; line-height: 1.4; }
     .status { margin-top: 8px; font-size: 13px; font-weight: 700; color: #0f766e; }
 
@@ -86,7 +99,12 @@
 
     <div class="grid">
       <section class="card">
-        <h2 style="margin:0 0 8px;">Controls</h2>
+        <div class="modeBar">
+          <span id="modeLabel" class="modeText">Easy version</span>
+          <button id="modeToggleBtn" class="btn neutral" type="button">Switch to hard</button>
+        </div>
+
+        <h2 id="controlsTitle" style="margin:0 0 8px;">Easy Version Controls</h2>
 
         <div class="row2">
           <div>
@@ -110,29 +128,12 @@
           </div>
         </div>
 
-        <div class="row2">
-          <div>
-            <span class="label">Death frames (gray stage)</span>
-            <input id="deathFrames" type="number" min="3" max="8" value="5" />
-          </div>
-          <div>
-            <span class="label">Pre-death hold frames</span>
-            <input id="preDeathHold" type="number" min="1" max="10" value="3" />
-          </div>
-        </div>
+        <span class="label">Speed (fps)</span>
+        <input id="fps" type="number" min="1" max="30" value="1" />
 
-        <div class="row2">
-          <div>
-            <span class="label">Speed (fps)</span>
-            <input id="fps" type="number" min="1" max="30" value="8" />
-          </div>
-          <div>
-            <span class="label">Survival rule</span>
-            <select id="survivalRule">
-              <option value="payoff" selected>Payoff-based survival probability</option>
-              <option value="equal">Equal survival probability (baseline)</option>
-            </select>
-          </div>
+        <div id="hardControls" style="display:none;">
+          <span class="label">Survival constant c (hard mode)</span>
+          <input id="survivalConstant" type="number" min="0" max="2" step="0.05" value="0.85" />
         </div>
 
         <span class="label">Baby rule</span>
@@ -145,11 +146,10 @@
           <button class="btn primary" id="createBtn">1) Create population</button>
           <button class="btn primary" id="groupBtn">2) Make groups</button>
           <button class="btn primary" id="survivalBtn">3) Survival step</button>
+          <button class="btn primary" id="runBtn">Run periods</button>
           <button class="btn neutral" id="prevBtn">Previous frame</button>
           <button class="btn neutral" id="nextBtn">Next frame</button>
-          <button class="btn primary" id="runBtn">Run periods</button>
           <button class="btn stop" id="stopBtn">Stop</button>
-          <button class="btn neutral" id="clearBtn">Clear all state</button>
         </div>
 
         <div id="status" class="status">Ready.</div>
@@ -157,7 +157,7 @@
         <p class="legend">
           Coordination game payoff: benefit from group minimum effort minus own cost.<br />
           Benefit: L→0, M→10, H→100; Cost: L→0, M→5, H→10; individual payoff range: -10 to 90.<br />
-          Higher payoff ⇒ higher survival probability.
+          <span id="survivalEquationText">P(survival) = (0.85 × payoff + 10) / 100</span>
         </p>
       </section>
 
@@ -195,6 +195,6 @@
     </div>
   </div>
 
-  <script src="./app.js?v=coordination-v3"></script>
+  <script src="./app.js?v=coordination-v5"></script>
 </body>
 </html>

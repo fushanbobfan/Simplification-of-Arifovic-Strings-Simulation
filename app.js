@@ -14,6 +14,9 @@ const EFFORTS = ["L", "M", "H"];
 const COST = { L: 0, M: 5, H: 10 };
 const BENEFIT = { L: 0, M: 10, H: 100 };
 const CLASS_BY_EFFORT = { L: "low", M: "medium", H: "high" };
+const EASY_SURVIVAL_MULTIPLIER = 0.85;
+const DEATH_FRAMES = 1;
+const PRE_DEATH_HOLD = 1;
 
 const sim = {
   rng: new LCG(42),
@@ -26,28 +29,46 @@ const sim = {
   phase: "idle", // idle -> grouped -> survival_pre -> death -> birth
   preDeathHoldLeft: 0,
   snapshots: [],
-  deathFramesApplied: 0,
+  mode: "easy",
 };
 
 function el(id) { return document.getElementById(id); }
 
+function currentSurvivalEquation(multiplier) {
+  return `P(survival) = (${multiplier.toFixed(2)} × payoff + 10) / 100`;
+}
+
+function updateModeUI() {
+  const isEasy = sim.mode === "easy";
+  el("modeLabel").textContent = isEasy ? "Easy version" : "Hard version";
+  el("modeToggleBtn").textContent = isEasy ? "Switch to hard" : "Switch to easy";
+  el("controlsTitle").textContent = isEasy ? "Easy Version Controls" : "Hard Version Controls";
+  el("hardControls").style.display = isEasy ? "none" : "block";
+
+  const multiplier = isEasy ? EASY_SURVIVAL_MULTIPLIER : Number(el("survivalConstant").value);
+  el("survivalEquationText").textContent = currentSurvivalEquation(multiplier);
+}
+
 function readParams() {
+  const mode = sim.mode;
   const params = {
+    mode,
     populationSize: Number(el("populationSize").value),
     groupSize: Number(el("groupSize").value),
     periods: Number(el("periods").value),
     seed: Number(el("seed").value),
-    deathFrames: Number(el("deathFrames").value),
-    preDeathHold: Number(el("preDeathHold").value),
     fps: Number(el("fps").value),
-    survivalRule: el("survivalRule").value,
     babyRule: el("babyRule").value,
+    survivalConstant: mode === "easy" ? EASY_SURVIVAL_MULTIPLIER : Number(el("survivalConstant").value),
   };
+
   if (params.populationSize < 100 || params.populationSize > 300) throw new Error("Population must be 100-300.");
   if (params.groupSize < 2 || params.groupSize > params.populationSize) throw new Error("Group size must be between 2 and population.");
-  if (params.deathFrames < 3 || params.deathFrames > 8) throw new Error("Death frames must be 3-8.");
-  if (params.preDeathHold < 1 || params.preDeathHold > 10) throw new Error("Pre-death hold must be 1-10.");
   if (params.fps < 1 || params.fps > 30) throw new Error("FPS must be 1-30.");
+  if (Number.isNaN(params.survivalConstant) || params.survivalConstant < 0 || params.survivalConstant > 2) {
+    throw new Error("Hard-mode survival constant c must be between 0 and 2.");
+  }
+
   return params;
 }
 
@@ -68,11 +89,10 @@ function applyLiveParams() {
   }
   const structuralChanged = hasStructuralChanges(p);
   sim.params.periods = p.periods;
-  sim.params.deathFrames = p.deathFrames;
-  sim.params.preDeathHold = p.preDeathHold;
   sim.params.fps = p.fps;
-  sim.params.survivalRule = p.survivalRule;
   sim.params.babyRule = p.babyRule;
+  sim.params.mode = p.mode;
+  sim.params.survivalConstant = p.survivalConstant;
   return { structuralChanged, next: p };
 }
 
@@ -91,6 +111,7 @@ function saveSnapshot() {
     phase: sim.phase,
     preDeathHoldLeft: sim.preDeathHoldLeft,
     status: el("status").textContent,
+    mode: sim.mode,
   });
   if (sim.snapshots.length > 200) sim.snapshots.shift();
 }
@@ -105,12 +126,15 @@ function restorePreviousFrame() {
   sim.params = s.params;
   sim.phase = s.phase;
   sim.preDeathHoldLeft = s.preDeathHoldLeft;
+  sim.mode = s.mode ?? sim.mode;
+  updateModeUI();
   setStatus(`Restored previous frame. ${s.status}`);
   renderGroups();
 }
 
 function createPopulation(forcedParams = null) {
   sim.params = forcedParams ?? readParams();
+  sim.mode = sim.params.mode;
   sim.rng = new LCG(sim.params.seed);
   sim.period = 0;
   sim.agents = Array.from({ length: sim.params.populationSize }, () => createAgent(sim.rng));
@@ -118,8 +142,8 @@ function createPopulation(forcedParams = null) {
   sim.phase = "idle";
   sim.preDeathHoldLeft = 0;
   sim.snapshots = [];
-  sim.deathFramesApplied = 0;
   el("historyBody").innerHTML = "";
+  updateModeUI();
   setStatus("Population created.");
   updateStats();
   renderGroups();
@@ -145,12 +169,14 @@ function minEffort(efforts) {
 }
 
 function payoffToSurvivalProbability(payoff) {
-  return Math.max(0, Math.min(1, (payoff + 10) / 100));
+  const c = sim.params?.survivalConstant ?? EASY_SURVIVAL_MULTIPLIER;
+  return Math.max(0, Math.min(1, (c * payoff + 10) / 100));
 }
 
 function evaluateSurvival() {
   if (sim.groups.length === 0) formGroups();
   applyLiveParams();
+  updateModeUI();
 
   for (const g of sim.groups) {
     const members = g.memberIndices.map((idx) => sim.agents[idx]);
@@ -162,18 +188,17 @@ function evaluateSurvival() {
     for (const idx of g.memberIndices) {
       const a = sim.agents[idx];
       a.payoff = g.benefit - COST[a.effort];
-      a.pSurvival = sim.params.survivalRule === "equal" ? 0.5 : payoffToSurvivalProbability(a.payoff);
+      a.pSurvival = payoffToSurvivalProbability(a.payoff);
       a.dead = sim.rng.random() > a.pSurvival;
-      a.deathFramesLeft = a.dead ? sim.params.deathFrames : 0;
+      a.deathFramesLeft = a.dead ? DEATH_FRAMES : 0;
       sumPayoff += a.payoff;
     }
     g.avgPayoff = sumPayoff / g.memberIndices.length;
   }
 
   sim.phase = "survival_pre";
-  sim.preDeathHoldLeft = sim.params.preDeathHold;
-  sim.deathFramesApplied = sim.params.deathFrames;
-  setStatus(`Survival computed. pre-death=${sim.params.preDeathHold}, deathFrames=${sim.params.deathFrames}`);
+  sim.preDeathHoldLeft = PRE_DEATH_HOLD;
+  setStatus(`Survival computed (${sim.mode} mode).`);
   renderGroups();
 }
 
@@ -184,8 +209,6 @@ function stepDeathBirthFrame() {
   }
 
   if (sim.phase === "survival_pre") {
-    applyLiveParams();
-    sim.preDeathHoldLeft = Math.min(sim.preDeathHoldLeft, sim.params.preDeathHold);
     sim.preDeathHoldLeft -= 1;
     if (sim.preDeathHoldLeft > 0) {
       setStatus(`Pre-death hold frame (${sim.preDeathHoldLeft} left).`);
@@ -196,14 +219,6 @@ function stepDeathBirthFrame() {
   }
 
   if (sim.phase === "death") {
-    applyLiveParams();
-    if (sim.params.deathFrames !== sim.deathFramesApplied) {
-      const diff = sim.params.deathFrames - sim.deathFramesApplied;
-      for (const a of sim.agents) {
-        if (a.dead && a.deathFramesLeft > 0) a.deathFramesLeft = Math.max(1, a.deathFramesLeft + diff);
-      }
-      sim.deathFramesApplied = sim.params.deathFrames;
-    }
     let hasGray = false;
     for (const a of sim.agents) {
       if (a.dead && a.deathFramesLeft > 0) {
@@ -244,7 +259,6 @@ function runLoopStep() {
   try {
     const { structuralChanged, next } = applyLiveParams();
     if (structuralChanged && sim.params) {
-      // If core structure changed during/after clear, restart population with new settings.
       createPopulation(next);
       formGroups();
     }
@@ -368,23 +382,21 @@ function appendHistory() {
 
 function setStatus(msg) { el("status").textContent = msg; }
 
-function clearAllState() {
-  stopRun();
-  sim.period = 0;
-  sim.agents = [];
-  sim.groups = [];
-  sim.params = null;
-  sim.phase = "idle";
-  sim.preDeathHoldLeft = 0;
-  sim.snapshots = [];
-  sim.deathFramesApplied = 0;
-  el("historyBody").innerHTML = "";
-  setGroupDetails("Hover over a group box to see min effort, benefit, and average payoff.");
-  setStringDetails("Hover over a string bar to see effort, payoff, and survival probability.");
-  updateStats();
-  renderGroups();
-  setStatus("All simulation state cleared. Parameters now uncoupled from old run; click Create population.");
-}
+el("modeToggleBtn").addEventListener("click", () => {
+  sim.mode = sim.mode === "easy" ? "hard" : "easy";
+  updateModeUI();
+  if (sim.params) {
+    applyLiveParams();
+    setStatus(`Switched to ${sim.mode} mode.`);
+  }
+});
+
+el("survivalConstant").addEventListener("input", () => {
+  if (sim.mode === "hard") {
+    updateModeUI();
+    if (sim.params) applyLiveParams();
+  }
+});
 
 el("createBtn").addEventListener("click", () => {
   try { stopRun(); createPopulation(); }
@@ -411,8 +423,8 @@ el("runBtn").addEventListener("click", () => {
   catch (e) { alert(e.message); }
 });
 el("stopBtn").addEventListener("click", () => { stopRun(); setStatus("Stopped."); });
-el("clearBtn").addEventListener("click", () => { clearAllState(); });
 
+updateModeUI();
 createPopulation();
 formGroups();
 renderGroups();

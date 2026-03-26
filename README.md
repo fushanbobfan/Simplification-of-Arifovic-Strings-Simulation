@@ -12,19 +12,21 @@ A classroom coordination-game simulation for PS 115D (UCLA), using literal strin
 1. Create population (100–300)
 2. Form groups by sample size `n`
 3. Compute payoff and survival probability
-4. Show dead strings in gray for 3–5 frames
-5. Remove dead strings
-6. Add babies to keep population size constant
-7. Repeat for multiple periods
+4. Show a single transition frame then remove dead strings
+5. Add babies to keep population size constant
+6. Repeat for multiple periods
+
+## Version switch
+- Use the top-left mode button to switch between **Easy** and **Hard** versions.
+- Easy mode uses fixed survival equation: `P(survival) = (0.85 * payoff + 10) / 100`
+- Hard mode allows user to edit the multiplier `c`: `P(survival) = (c * payoff + 10) / 100`
 
 ## Controls
 - `1) Create population`
 - `2) Make groups`
 - `3) Survival step`
-- `Next frame`
 - `Run periods` / `Stop`
-- `Clear all state` (reset snapshots, groups, history, and simulation state so new parameters are guaranteed to apply)
-- Survival rule: payoff-based or equal baseline
+- `Previous frame` / `Next frame`
 - Baby rule: from alive population or equal random
 
 ## Run locally
@@ -37,8 +39,6 @@ Open:
 ## GitHub Pages
 Use `main / (root)` in Pages settings.
 
-
 ## Mutable run-time parameters
-- During `Run periods`, these are applied live: `fps`, `deathFrames`, `preDeathHold`, `survivalRule`, `babyRule`, `periods`.
+- During `Run periods`, these are applied live: `fps`, `babyRule`, `periods`, and mode-specific survival multiplier (`easy=0.85`, `hard=c`).
 - Structural parameters (`populationSize`, `groupSize`, `seed`) trigger a fresh population build when changed.
-- If you want a guaranteed clean restart at any time, click `Clear all state` then `Create population`.
