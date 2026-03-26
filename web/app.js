@@ -92,6 +92,21 @@ function updateModeUI() {
   el("survivalEquationText").textContent = currentSurvivalEquation(multiplier);
 }
 
+function currentSurvivalEquation(multiplier) {
+  return `P(survival) = (${multiplier.toFixed(2)} × payoff + 10) / 100`;
+}
+
+function updateModeUI() {
+  const isEasy = sim.mode === "easy";
+  el("modeLabel").textContent = isEasy ? "Easy version" : "Hard version";
+  el("modeToggleBtn").textContent = isEasy ? "Switch to hard" : "Switch to easy";
+  el("controlsTitle").textContent = isEasy ? "Easy Version Controls" : "Hard Version Controls";
+  el("hardControls").style.display = isEasy ? "none" : "block";
+
+  const multiplier = isEasy ? EASY_SURVIVAL_MULTIPLIER : Number(el("survivalConstant").value);
+  el("survivalEquationText").textContent = currentSurvivalEquation(multiplier);
+}
+
 function readParams() {
   const mode = sim.mode;
   const params = {
