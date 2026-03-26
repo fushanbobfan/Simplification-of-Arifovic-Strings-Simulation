@@ -17,7 +17,7 @@ const CLASS_BY_EFFORT = { L: "low", M: "medium", H: "high" };
 const EASY_SURVIVAL_MULTIPLIER = 0.85;
 const DEATH_FRAMES = 5;
 const PRE_DEATH_HOLD = 3;
-const BIRTH_HOLD_FRAMES = 2;
+const BIRTH_HOLD_FRAMES = 4;
 const DEFAULTS = {
   populationSize: 180,
   groupSize: 15,
@@ -175,8 +175,42 @@ function restorePreviousFrame() {
   setPhase(s.phase);
   el("eventLogList").innerHTML = s.events ?? "";
   updateModeUI();
-  setStatus(`Restored previous frame. ${s.status}`);
+  setStatus("Restored previous frame.");
   renderGroups();
+}
+
+function resetInputsToDefaults() {
+  el("populationSize").value = String(DEFAULTS.populationSize);
+  el("groupSize").value = String(DEFAULTS.groupSize);
+  el("periods").value = String(DEFAULTS.periods);
+  el("seed").value = String(DEFAULTS.seed);
+  el("fps").value = String(DEFAULTS.fps);
+  el("survivalConstant").value = String(DEFAULTS.survivalConstant);
+  el("babyRule").value = DEFAULTS.babyRule;
+  el("babyMixP").value = String(DEFAULTS.babyMixP);
+  updateBabyRuleUI();
+}
+
+function resetSimulation() {
+  stopRun();
+  resetInputsToDefaults();
+  sim.params = null;
+  sim.period = 0;
+  sim.agents = [];
+  sim.groups = [];
+  sim.snapshots = [];
+  sim.preDeathHoldLeft = 0;
+  sim.birthHoldLeft = 0;
+  sim.rng = new LCG(DEFAULTS.seed);
+  el("historyBody").innerHTML = "";
+  el("eventLogList").innerHTML = "";
+  setGroupDetails("Hover over a group box to see min effort, benefit, and average payoff.");
+  setStringDetails("Hover over a string bar to see effort, payoff, and survival probability.");
+  createPopulation();
+  formGroups();
+  renderGroups();
+  addEvent("Simulation reset to initial defaults.");
+  setStatus("Simulation reset.");
 }
 
 function resetInputsToDefaults() {
@@ -307,6 +341,7 @@ function evaluateSurvival() {
 
 function stepDeathBirthFrame() {
   if (sim.phase === "birth") {
+    if (sim.birthHoldLeft <= 0) sim.birthHoldLeft = BIRTH_HOLD_FRAMES;
     sim.birthHoldLeft -= 1;
     if (sim.birthHoldLeft > 0) {
       setStatus(`Birth stage: newborns visible (${sim.birthHoldLeft} frames left).`);
@@ -371,9 +406,21 @@ function stepDeathBirthFrame() {
     sim.period += 1;
     appendHistory();
     addEvent(`Birth stage: replaced ${deadCount} dead strings.`);
-    setStatus(`Birth completed. New period ${sim.period}.`);
-    formGroups();
+    setStatus(`Birth stage entered. New period ${sim.period}.`);
     renderGroups();
+    return;
+  }
+  stepDeathBirthFrame();
+}
+
+
+function advanceOnePhase() {
+  if (sim.phase === "idle") {
+    formGroups();
+    return;
+  }
+  if (sim.phase === "grouped") {
+    evaluateSurvival();
     return;
   }
   stepDeathBirthFrame();
