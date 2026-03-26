@@ -17,6 +17,7 @@ const CLASS_BY_EFFORT = { L: "low", M: "medium", H: "high" };
 const EASY_SURVIVAL_MULTIPLIER = 0.85;
 const DEATH_FRAMES = 5;
 const PRE_DEATH_HOLD = 3;
+const BIRTH_HOLD_FRAMES = 2;
 const DEFAULTS = {
   populationSize: 180,
   groupSize: 15,
@@ -38,6 +39,7 @@ const sim = {
   loopHandle: null,
   phase: "idle",
   preDeathHoldLeft: 0,
+  birthHoldLeft: 0,
   snapshots: [],
   mode: "easy",
 };
@@ -151,6 +153,7 @@ function saveSnapshot() {
     params: deepClone(sim.params),
     phase: sim.phase,
     preDeathHoldLeft: sim.preDeathHoldLeft,
+    birthHoldLeft: sim.birthHoldLeft,
     status: el("status").textContent,
     mode: sim.mode,
     events: el("eventLogList").innerHTML,
@@ -168,6 +171,7 @@ function restorePreviousFrame() {
   sim.params = s.params;
   sim.mode = s.mode ?? sim.mode;
   sim.preDeathHoldLeft = s.preDeathHoldLeft;
+  sim.birthHoldLeft = s.birthHoldLeft ?? 0;
   setPhase(s.phase);
   el("eventLogList").innerHTML = s.events ?? "";
   updateModeUI();
@@ -196,6 +200,7 @@ function resetSimulation() {
   sim.groups = [];
   sim.snapshots = [];
   sim.preDeathHoldLeft = 0;
+  sim.birthHoldLeft = 0;
   sim.rng = new LCG(DEFAULTS.seed);
   el("historyBody").innerHTML = "";
   el("eventLogList").innerHTML = "";
@@ -216,6 +221,7 @@ function createPopulation(forcedParams = null) {
   sim.agents = Array.from({ length: sim.params.populationSize }, () => createAgent(sim.rng));
   sim.groups = [];
   sim.preDeathHoldLeft = 0;
+  sim.birthHoldLeft = 0;
   sim.snapshots = [];
   el("historyBody").innerHTML = "";
   setPhase("idle");
@@ -293,6 +299,7 @@ function evaluateSurvival() {
 
   setPhase("survival_pre");
   sim.preDeathHoldLeft = PRE_DEATH_HOLD;
+  sim.birthHoldLeft = 0;
   addEvent(`Computed survival probabilities. Dead this step: ${deadCount}.`);
   setStatus(`Survival computed (${sim.mode} mode).`);
   renderGroups();
@@ -300,6 +307,12 @@ function evaluateSurvival() {
 
 function stepDeathBirthFrame() {
   if (sim.phase === "birth") {
+    sim.birthHoldLeft -= 1;
+    if (sim.birthHoldLeft > 0) {
+      setStatus(`Birth stage: newborns visible (${sim.birthHoldLeft} frames left).`);
+      renderGroups();
+      return;
+    }
     formGroups();
     return;
   }
@@ -354,6 +367,7 @@ function stepDeathBirthFrame() {
 
     sim.agents = survivors;
     setPhase("birth");
+    sim.birthHoldLeft = BIRTH_HOLD_FRAMES;
     sim.period += 1;
     appendHistory();
     addEvent(`Birth stage: replaced ${deadCount} dead strings.`);
@@ -362,11 +376,12 @@ function stepDeathBirthFrame() {
     renderGroups();
     return;
   }
+  stepDeathBirthFrame();
 }
 
 
 function advanceOnePhase() {
-  if (sim.phase === "idle" || sim.phase === "birth") {
+  if (sim.phase === "idle") {
     formGroups();
     return;
   }
