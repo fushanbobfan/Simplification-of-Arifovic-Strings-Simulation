@@ -92,21 +92,6 @@ function updateModeUI() {
   el("survivalEquationText").textContent = currentSurvivalEquation(multiplier);
 }
 
-function currentSurvivalEquation(multiplier) {
-  return `P(survival) = (${multiplier.toFixed(2)} × payoff + 10) / 100`;
-}
-
-function updateModeUI() {
-  const isEasy = sim.mode === "easy";
-  el("modeLabel").textContent = isEasy ? "Easy version" : "Hard version";
-  el("modeToggleBtn").textContent = isEasy ? "Switch to hard" : "Switch to easy";
-  el("controlsTitle").textContent = isEasy ? "Easy Version Controls" : "Hard Version Controls";
-  el("hardControls").style.display = isEasy ? "none" : "block";
-
-  const multiplier = isEasy ? EASY_SURVIVAL_MULTIPLIER : Number(el("survivalConstant").value);
-  el("survivalEquationText").textContent = currentSurvivalEquation(multiplier);
-}
-
 function readParams() {
   const mode = sim.mode;
   const params = {
@@ -155,7 +140,7 @@ function applyLiveParams() {
 }
 
 function createAgent(rng, inheritedEffort = null) {
-  return { effort: inheritedEffort ?? rng.choice(EFFORTS), payoff: 0, pSurvival: 0, dead: false, deathFramesLeft: 0 };
+  return { effort: inheritedEffort ?? rng.choice(EFFORTS), payoff: 0, pSurvival: 0, willDie: false, deathFramesLeft: 0 };
 }
 
 function saveSnapshot() {
@@ -298,9 +283,9 @@ function evaluateSurvival() {
       const a = sim.agents[idx];
       a.payoff = g.benefit - COST[a.effort];
       a.pSurvival = payoffToSurvivalProbability(a.payoff);
-      a.dead = sim.rng.random() > a.pSurvival;
-      a.deathFramesLeft = a.dead ? DEATH_FRAMES : 0;
-      if (a.dead) deadCount += 1;
+      a.willDie = sim.rng.random() > a.pSurvival;
+      a.deathFramesLeft = a.willDie ? DEATH_FRAMES : 0;
+      if (a.willDie) deadCount += 1;
       sumPayoff += a.payoff;
     }
     g.avgPayoff = sumPayoff / g.memberIndices.length;
@@ -314,6 +299,11 @@ function evaluateSurvival() {
 }
 
 function stepDeathBirthFrame() {
+  if (sim.phase === "birth") {
+    formGroups();
+    return;
+  }
+
   if (sim.phase === "grouped") {
     evaluateSurvival();
     return;
@@ -333,20 +323,20 @@ function stepDeathBirthFrame() {
   if (sim.phase === "death") {
     let hasGray = false;
     for (const a of sim.agents) {
-      if (a.dead && a.deathFramesLeft > 0) {
+      if (a.willDie && a.deathFramesLeft > 0) {
         a.deathFramesLeft -= 1;
         hasGray = hasGray || a.deathFramesLeft > 0;
       }
     }
 
     if (hasGray) {
-      setStatus("Dead strings shown in gray (visual transition).\n");
+      setStatus("Dead strings shown in gray (visual transition).");
       renderGroups();
       return;
     }
 
-    const aliveEfforts = sim.agents.filter((a) => !a.dead).map((a) => a.effort);
-    const survivors = sim.agents.filter((a) => !a.dead);
+    const aliveEfforts = sim.agents.filter((a) => !a.willDie).map((a) => a.effort);
+    const survivors = sim.agents.filter((a) => !a.willDie);
     const deadCount = sim.agents.length - survivors.length;
 
     for (let i = 0; i < deadCount; i++) {
@@ -370,7 +360,21 @@ function stepDeathBirthFrame() {
     setStatus(`Birth completed. New period ${sim.period}.`);
     formGroups();
     renderGroups();
+    return;
   }
+}
+
+
+function advanceOnePhase() {
+  if (sim.phase === "idle" || sim.phase === "birth") {
+    formGroups();
+    return;
+  }
+  if (sim.phase === "grouped") {
+    evaluateSurvival();
+    return;
+  }
+  stepDeathBirthFrame();
 }
 
 function runLoopStep() {
@@ -390,9 +394,7 @@ function runLoopStep() {
     }
 
     saveSnapshot();
-    if (sim.phase === "idle" || sim.phase === "birth") formGroups();
-    if (sim.phase === "grouped") evaluateSurvival();
-    else stepDeathBirthFrame();
+    advanceOnePhase();
   } catch (e) {
     stopRun();
     alert(e.message);
@@ -429,7 +431,7 @@ function shareOf(effort) {
 
 function updateStats() {
   el("periodLabel").textContent = String(sim.period);
-  el("aliveLabel").textContent = String(sim.agents.filter((a) => !a.dead).length);
+  el("aliveLabel").textContent = String(sim.phase === "death" || sim.phase === "survival_pre" ? sim.agents.filter((a) => !a.willDie).length : sim.agents.length);
   el("lLabel").textContent = `${(shareOf("L") * 100).toFixed(1)}%`;
   el("mLabel").textContent = `${(shareOf("M") * 100).toFixed(1)}%`;
   el("hLabel").textContent = `${(shareOf("H") * 100).toFixed(1)}%`;
@@ -471,10 +473,11 @@ function renderGroups() {
     for (const idx of g.memberIndices) {
       const a = sim.agents[idx];
       const s = document.createElement("div");
-      s.className = `string ${CLASS_BY_EFFORT[a.effort]}${a.dead ? " dead" : ""}`;
+      const showDead = sim.phase === "death" && a.willDie;
+      s.className = `string ${CLASS_BY_EFFORT[a.effort]}${showDead ? " dead" : ""}`;
       s.addEventListener("mouseenter", () => {
         setStringDetails(
-          `Effort: ${a.effort}\nPayoff: ${a.payoff.toFixed(2)}\nP(survival): ${a.pSurvival.toFixed(2)}\nState: ${a.dead ? "Dead/gray" : "Alive"}`
+          `Effort: ${a.effort}\nPayoff: ${a.payoff.toFixed(2)}\nP(survival): ${a.pSurvival.toFixed(2)}\nState: ${a.willDie ? (sim.phase === "death" ? "Dead/gray" : "Marked for removal") : "Alive"}`
         );
       });
       strings.appendChild(s);
@@ -489,7 +492,7 @@ function renderGroups() {
 
 function appendHistory() {
   const tr = document.createElement("tr");
-  tr.innerHTML = `<td>${sim.period}</td><td>${sim.agents.filter((a) => !a.dead).length}</td><td>${(shareOf("L") * 100).toFixed(1)}%</td><td>${(shareOf("M") * 100).toFixed(1)}%</td><td>${(shareOf("H") * 100).toFixed(1)}%</td>`;
+  tr.innerHTML = `<td>${sim.period}</td><td>${sim.agents.length}</td><td>${(shareOf("L") * 100).toFixed(1)}%</td><td>${(shareOf("M") * 100).toFixed(1)}%</td><td>${(shareOf("H") * 100).toFixed(1)}%</td>`;
   el("historyBody").prepend(tr);
 }
 
@@ -523,7 +526,7 @@ el("nextBtn").addEventListener("click", () => {
     if (!sim.params) createPopulation();
     applyLiveParams();
     saveSnapshot();
-    stepDeathBirthFrame();
+    advanceOnePhase();
   } catch (e) { alert(e.message); }
 });
 el("runBtn").addEventListener("click", () => { try { if (!sim.params) createPopulation(); runPeriods(); } catch (e) { alert(e.message); } });
