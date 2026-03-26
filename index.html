@@ -6,7 +6,7 @@
   <title>Coordination Strings Survival Simulation</title>
   <style>
     :root {
-      --bg: #e6f0f5;
+      --bg: #dde6ee;
       --card: #ffffff;
       --ink: #1f2937;
       --muted: #4b5563;
@@ -15,31 +15,54 @@
       --m: #4e79a7;
       --h: #1b3a6f;
       --gray: #9ca3af;
+      --accent: #2563eb;
+      --ok: #0f766e;
     }
     * { box-sizing: border-box; }
     body { margin: 0; font-family: Arial, sans-serif; background: var(--bg); color: var(--ink); }
-    .wrap { max-width: 1300px; margin: 20px auto; background: #f8fbff; border: 1px solid #94a3b8; border-radius: 14px; padding: 16px; }
-    h1 { margin: 0 0 10px; font-size: 40px; }
-    .grid { display: grid; grid-template-columns: 370px 1fr; gap: 14px; }
+    .wrap { max-width: 1360px; margin: 14px auto; background: #f8fbff; border: 1px solid #9ca3af; border-radius: 14px; padding: 14px; }
+    h1 { margin: 0 0 10px; font-size: 52px; }
+    .grid { display: grid; grid-template-columns: 390px 1fr; gap: 14px; }
     .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
 
     .label { font-size: 13px; font-weight: 700; margin-top: 8px; display: block; }
-    input, select { width: 100%; padding: 8px; border: 1px solid #bfc7d1; border-radius: 8px; font-size: 15px; margin-top: 3px; }
+    input, select { width: 100%; padding: 8px; border: 1px solid #bfc7d1; border-radius: 8px; font-size: 15px; margin-top: 3px; background: #fff; }
     .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
     .btn { border: 0; border-radius: 10px; padding: 10px; font-size: 15px; font-weight: 700; cursor: pointer; }
-    .btn.primary { background: #2563eb; color: #fff; }
+    .btn.primary { background: var(--accent); color: #fff; }
     .btn.primary:hover { background: #1d4ed8; }
     .btn.neutral { background: #e5e7eb; }
     .btn.stop { background: #ef4444; color: #fff; }
+    .btn.reset { background: #111827; color: #fff; }
     .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
 
+    .modeBar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 8px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: #f3f7ff;
+      margin-bottom: 8px;
+    }
+    .modeText { font-size: 14px; font-weight: 700; }
+
     .legend { font-size: 12px; color: var(--muted); margin-top: 10px; line-height: 1.4; }
-    .status { margin-top: 8px; font-size: 13px; font-weight: 700; color: #0f766e; }
+    .status { margin-top: 8px; font-size: 18px; font-weight: 700; color: var(--ok); }
 
     .stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 10px; }
     .stat { background: #eef2ff; border-radius: 10px; padding: 8px; }
     .stat .k { font-size: 11px; color: var(--muted); }
-    .stat .v { font-size: 22px; font-weight: 700; }
+    .stat .v { font-size: 36px; font-weight: 700; }
+
+    .phasePanel { border: 1px solid var(--line); border-radius: 10px; background: #fcfdff; padding: 8px; margin-bottom: 10px; }
+    .phaseNow { font-size: 16px; font-weight: 700; margin-bottom: 6px; }
+    .phaseHint { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+    .phaseSteps { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+    .phaseStep { border: 1px solid var(--line); border-radius: 8px; padding: 5px; text-align: center; font-size: 12px; color: #334155; background: #fff; }
+    .phaseStep.active { background: #dbeafe; border-color: #60a5fa; font-weight: 700; }
 
     .hoverPanel {
       display: grid;
@@ -68,6 +91,11 @@
     .string.high { width: 52px; background: var(--h); }
     .string.dead { background: var(--gray) !important; border-color: #6b7280; opacity: 0.7; }
 
+    .eventLog { margin-top: 10px; border: 1px solid var(--line); border-radius: 10px; background: #fff; padding: 8px; max-height: 125px; overflow: auto; }
+    .eventLog h4 { margin: 0 0 6px; font-size: 13px; }
+    .eventLog ul { margin: 0; padding-left: 18px; font-size: 12px; }
+    .eventLog li { margin-bottom: 4px; }
+
     .history { margin-top: 10px; border: 1px solid var(--line); border-radius: 10px; max-height: 190px; overflow: auto; }
     table { width: 100%; border-collapse: collapse; font-size: 12px; }
     th, td { border-bottom: 1px solid var(--line); padding: 6px; text-align: left; }
@@ -77,6 +105,8 @@
       .grid { grid-template-columns: 1fr; }
       .stats { grid-template-columns: repeat(2, 1fr); }
       .hoverPanel { grid-template-columns: 1fr; }
+      h1 { font-size: 36px; }
+      .phaseSteps { grid-template-columns: 1fr 1fr; }
     }
   </style>
 </head>
@@ -86,7 +116,12 @@
 
     <div class="grid">
       <section class="card">
-        <h2 style="margin:0 0 8px;">Controls</h2>
+        <div class="modeBar">
+          <span id="modeLabel" class="modeText">Simple version</span>
+          <button id="modeToggleBtn" class="btn neutral" type="button">Switch to complex</button>
+        </div>
+
+        <h2 id="controlsTitle" style="margin:0 0 8px;">Simple Version Controls</h2>
 
         <div class="row2">
           <div>
@@ -110,46 +145,35 @@
           </div>
         </div>
 
-        <div class="row2">
-          <div>
-            <span class="label">Death frames (gray stage)</span>
-            <input id="deathFrames" type="number" min="3" max="8" value="5" />
-          </div>
-          <div>
-            <span class="label">Pre-death hold frames</span>
-            <input id="preDeathHold" type="number" min="1" max="10" value="3" />
-          </div>
-        </div>
+        <span class="label">Speed (fps)</span>
+        <input id="fps" type="number" min="1" max="30" value="1" />
 
-        <div class="row2">
-          <div>
-            <span class="label">Speed (fps)</span>
-            <input id="fps" type="number" min="1" max="30" value="8" />
-          </div>
-          <div>
-            <span class="label">Survival rule</span>
-            <select id="survivalRule">
-              <option value="payoff" selected>Payoff-based survival probability</option>
-              <option value="equal">Equal survival probability (baseline)</option>
-            </select>
-          </div>
+        <div id="complexControls" style="display:none;">
+          <span class="label">Survival constant c (complex mode)</span>
+          <input id="survivalConstant" type="number" min="0" max="2" step="0.05" value="0.85" />
         </div>
 
         <span class="label">Baby rule</span>
         <select id="babyRule">
-          <option value="fromAlive" selected>Babies sample from alive strings</option>
-          <option value="equalRandom">Babies random L/M/H equally</option>
+          <option value="fromAlive" selected>Babies sample from alive strings (exploitation)</option>
+          <option value="equalRandom">Babies random L/M/H equally (exploration)</option>
+          <option value="mixedP">Mixed: with p from alive, with (1-p) equal random</option>
         </select>
+
+        <div id="mixedBabyControls" style="display:none;">
+          <span class="label">p for mixed baby rule (0 to 1)</span>
+          <input id="babyMixP" type="number" min="0" max="1" step="0.05" value="0.50" />
+        </div>
 
         <div class="controls">
           <button class="btn primary" id="createBtn">1) Create population</button>
           <button class="btn primary" id="groupBtn">2) Make groups</button>
           <button class="btn primary" id="survivalBtn">3) Survival step</button>
+          <button class="btn primary" id="runBtn">Run periods</button>
           <button class="btn neutral" id="prevBtn">Previous frame</button>
           <button class="btn neutral" id="nextBtn">Next frame</button>
-          <button class="btn primary" id="runBtn">Run periods</button>
           <button class="btn stop" id="stopBtn">Stop</button>
-          <button class="btn neutral" id="clearBtn">Clear all state</button>
+          <button class="btn reset" id="resetBtn">Reset simulation</button>
         </div>
 
         <div id="status" class="status">Ready.</div>
@@ -157,8 +181,14 @@
         <p class="legend">
           Coordination game payoff: benefit from group minimum effort minus own cost.<br />
           Benefit: L→0, M→10, H→100; Cost: L→0, M→5, H→10; individual payoff range: -10 to 90.<br />
-          Higher payoff ⇒ higher survival probability.
+          <span id="survivalEquationText">P(survival) = (0.85 × payoff + 10) / 100</span><br />
+          Group payoff is independent within one period, but newborn generation and regrouping use the whole population, so groups become coupled across periods.
         </p>
+
+        <div class="eventLog">
+          <h4>What just happened?</h4>
+          <ul id="eventLogList"></ul>
+        </div>
       </section>
 
       <section class="card">
@@ -168,6 +198,18 @@
           <div class="stat"><div class="k">Share L</div><div class="v" id="lLabel">0%</div></div>
           <div class="stat"><div class="k">Share M</div><div class="v" id="mLabel">0%</div></div>
           <div class="stat"><div class="k">Share H</div><div class="v" id="hLabel">0%</div></div>
+        </div>
+
+        <div class="phasePanel">
+          <div class="phaseNow" id="phaseNow">Current phase: Idle</div>
+          <div class="phaseHint" id="phaseHint">Create population and groups to start.</div>
+          <div class="phaseSteps">
+            <div id="phase-idle" class="phaseStep">Idle</div>
+            <div id="phase-grouped" class="phaseStep">Grouped</div>
+            <div id="phase-survival_pre" class="phaseStep">Survival draw</div>
+            <div id="phase-death" class="phaseStep">Death display</div>
+            <div id="phase-birth" class="phaseStep">Birth</div>
+          </div>
         </div>
 
         <div class="hoverPanel">
@@ -195,6 +237,6 @@
     </div>
   </div>
 
-  <script src="./app.js?v=coordination-v3"></script>
+  <script src="./app.js?v=coordination-v9"></script>
 </body>
 </html>
