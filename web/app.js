@@ -376,6 +376,59 @@ function stepDeathBirthFrame() {
     renderGroups();
     return;
   }
+  stepDeathBirthFrame();
+}
+
+
+function advanceOnePhase() {
+  if (sim.phase === "idle") {
+    formGroups();
+    return;
+  }
+  if (sim.phase === "grouped") {
+    evaluateSurvival();
+    return;
+  }
+  stepDeathBirthFrame();
+}
+
+
+function advanceOnePhase() {
+  if (sim.phase === "idle") {
+    formGroups();
+    return;
+  }
+  if (sim.phase === "grouped") {
+    evaluateSurvival();
+    return;
+  }
+  stepDeathBirthFrame();
+}
+
+
+function advanceOnePhase() {
+  if (sim.phase === "idle") {
+    formGroups();
+    return;
+  }
+  if (sim.phase === "grouped") {
+    evaluateSurvival();
+    return;
+  }
+  stepDeathBirthFrame();
+}
+
+
+function advanceOnePhase() {
+  if (sim.phase === "idle") {
+    formGroups();
+    return;
+  }
+  if (sim.phase === "grouped") {
+    evaluateSurvival();
+    return;
+  }
+  stepDeathBirthFrame();
 }
 
 
