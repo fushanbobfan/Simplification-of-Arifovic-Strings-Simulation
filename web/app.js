@@ -431,6 +431,19 @@ function advanceOnePhase() {
   stepDeathBirthFrame();
 }
 
+
+function advanceOnePhase() {
+  if (sim.phase === "idle") {
+    formGroups();
+    return;
+  }
+  if (sim.phase === "grouped") {
+    evaluateSurvival();
+    return;
+  }
+  stepDeathBirthFrame();
+}
+
 function runLoopStep() {
   if (!sim.running) return;
   try {

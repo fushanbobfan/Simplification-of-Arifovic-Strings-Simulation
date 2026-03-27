@@ -121,7 +121,7 @@ For each baby:
 - with probability `p`: sample via `fromAlive`
 - with probability `1 - p`: sample via `equalRandom`
 
-So `p` is an exploitation–exploration dial:
+So `p` is an inheritance–exploration dial:
 
 - `p = 1`: equivalent to pure `fromAlive`
 - `p = 0`: equivalent to pure `equalRandom`
